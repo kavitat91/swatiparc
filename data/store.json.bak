@@ -1,0 +1,102 @@
+{
+  "residents": [
+    {
+      "id": "i2saci5",
+      "name": "Kavita & Satish ",
+      "flatNumber": "FF",
+      "contact": "9980878877",
+      "role": "President"
+    },
+    {
+      "id": "d4uxfex",
+      "name": "Arun ",
+      "flatNumber": "T4",
+      "contact": "9880105050",
+      "role": "Secretary"
+    },
+    {
+      "id": "49k3mpq",
+      "name": "Ashwin",
+      "flatNumber": "T2",
+      "contact": "7204413338",
+      "role": "Tenant"
+    },
+    {
+      "id": "92ytq8x",
+      "name": "Vinay ",
+      "flatNumber": "S3",
+      "contact": "9686322663",
+      "role": "Owner"
+    },
+    {
+      "id": "gfpfchg",
+      "name": "Ramaswamy Iyengar",
+      "flatNumber": "S3",
+      "contact": "9886311857",
+      "role": "Owner"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "dxqnywh",
+      "date": "2026-02-07",
+      "type": "REVENUE",
+      "category": "Maintenance Fee",
+      "amount": 4500,
+      "description": "Feb Maintenance "
+    },
+    {
+      "id": "68vg2e5",
+      "date": "2026-02-06",
+      "type": "EXPENSE",
+      "category": "Maintenance Fee",
+      "amount": 5000,
+      "description": ""
+    },
+    {
+      "id": "8ljvq26",
+      "date": "2026-02-06",
+      "type": "EXPENSE",
+      "category": "Water Bill",
+      "amount": 890,
+      "description": "",
+      "paymentMode": "UPI",
+      "spender": "Arun",
+      "isRefundable": true
+    },
+    {
+      "id": "2ahr2is",
+      "date": "2026-02-06",
+      "type": "REVENUE",
+      "category": "Maintenance Fee",
+      "amount": 4000,
+      "description": "",
+      "paymentMode": "NET_BANKING",
+      "isRefundable": false,
+      "residentId": "i2saci5"
+    },
+    {
+      "id": "kcom03s",
+      "date": "2026-02-06",
+      "type": "REVENUE",
+      "category": "Maintenance Fee",
+      "amount": 400,
+      "description": "",
+      "paymentMode": "UPI",
+      "spender": "",
+      "isRefundable": false,
+      "residentId": "d4uxfex"
+    },
+    {
+      "id": "87psgz7",
+      "date": "2026-02-06",
+      "type": "REVENUE",
+      "category": "Maintenance Fee",
+      "amount": 80,
+      "description": "",
+      "paymentMode": "UPI",
+      "isRefundable": false,
+      "residentId": "d4uxfex"
+    }
+  ]
+}
