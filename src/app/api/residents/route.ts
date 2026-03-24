@@ -7,7 +7,7 @@ import { Resident } from '@/types';
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
 export async function GET() {
-    const data = getAppData();
+    const data = await getAppData();
     return NextResponse.json(data.residents);
 }
 
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
             );
         }
 
-        const data = getAppData();
+        const data = await getAppData();
         const newResident: Resident = {
             id: generateId(),
             name,
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
         };
 
         data.residents.push(newResident);
-        saveAppData(data);
+        await saveAppData(data);
 
         return NextResponse.json(newResident);
     } catch (error) {
@@ -56,7 +56,7 @@ export async function PUT(req: Request) {
             );
         }
 
-        const data = getAppData();
+        const data = await getAppData();
         const residentIndex = data.residents.findIndex((r) => r.id === id);
 
         if (residentIndex === -1) {
@@ -74,7 +74,7 @@ export async function PUT(req: Request) {
             role: role || data.residents[residentIndex].role || 'Owner'
         };
 
-        saveAppData(data);
+        await saveAppData(data);
 
         return NextResponse.json(data.residents[residentIndex]);
     } catch (error) {

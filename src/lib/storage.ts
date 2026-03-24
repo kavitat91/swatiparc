@@ -1,43 +1,35 @@
-import fs from 'fs';
-import path from 'path';
 import { AppData } from '../types';
+import { Redis } from '@upstash/redis';
 
-const DATA_FILE_PATH = path.join(process.cwd(), 'data', 'store.json');
-
-// Ensure data directory exists
-const ensureDataDir = () => {
-    const dir = path.dirname(DATA_FILE_PATH);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-};
+// Initialize Upstash Redis client
+// Note: You must add UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN to your .env / Vercel Environment Variables
+const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL || 'http://localhost:8079',
+    token: process.env.UPSTASH_REDIS_REST_TOKEN || 'example_token',
+});
 
 const defaultData: AppData = {
     residents: [],
     transactions: [],
 };
 
-export const getAppData = (): AppData => {
-    ensureDataDir();
-    if (!fs.existsSync(DATA_FILE_PATH)) {
-        fs.writeFileSync(DATA_FILE_PATH, JSON.stringify(defaultData, null, 2));
-        return defaultData;
-    }
+export const getAppData = async (): Promise<AppData> => {
     try {
-        const fileContent = fs.readFileSync(DATA_FILE_PATH, 'utf-8');
-        return JSON.parse(fileContent);
+        // Fetch data from Redis under the key 'appData'
+        const data = await redis.get<AppData>('appData');
+        return data || defaultData;
     } catch (error) {
-        console.error('Error reading data file:', error);
+        console.error('Error reading data from Redis:', error);
         return defaultData;
     }
 };
 
-export const saveAppData = (data: AppData): void => {
-    ensureDataDir();
+export const saveAppData = async (data: AppData): Promise<void> => {
     try {
-        fs.writeFileSync(DATA_FILE_PATH, JSON.stringify(data, null, 2));
+        // Save the entire data structure back to Redis
+        await redis.set('appData', data);
     } catch (error) {
-        console.error('Error writing data file:', error);
+        console.error('Error writing data to Redis:', error);
         throw new Error('Failed to save data');
     }
 };

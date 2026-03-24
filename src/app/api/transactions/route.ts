@@ -5,7 +5,7 @@ import { Transaction } from '@/types';
 const generateId = () => Math.random().toString(36).substring(2, 9);
 
 export async function GET() {
-    const data = getAppData();
+    const data = await getAppData();
     return NextResponse.json(data.transactions);
 }
 
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
             );
         }
 
-        const data = getAppData();
+        const data = await getAppData();
         const newTransaction: Transaction = {
             id: generateId(),
             date: date || new Date().toISOString(),
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
         };
 
         data.transactions.push(newTransaction);
-        saveAppData(data);
+        await saveAppData(data);
 
         return NextResponse.json(newTransaction);
     } catch (error) {
@@ -60,7 +60,7 @@ export async function PUT(req: Request) {
             );
         }
 
-        const data = getAppData();
+        const data = await getAppData();
         const index = data.transactions.findIndex(t => t.id === id);
 
         if (index === -1) {
@@ -81,7 +81,7 @@ export async function PUT(req: Request) {
             invoiceImage,
         };
 
-        saveAppData(data);
+        await saveAppData(data);
         return NextResponse.json(data.transactions[index]);
     } catch (error) {
         return NextResponse.json(
