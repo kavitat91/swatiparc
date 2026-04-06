@@ -249,9 +249,9 @@ export default function AdminPage() {
     const residentsWithDues = residents.map(r => {
         const paidThisMonth = transactions
             .filter(t => t.residentId === r.id && t.type === 'REVENUE' && t.date.startsWith(currentMonth))
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + Number(t.amount), 0);
         const expected = r.flatNumber === 'FF' ? 4500 : 3000;
-        return { ...r, paid: paidThisMonth, due: expected - paidThisMonth };
+        return { ...r, paid: paidThisMonth, due: Number((expected - paidThisMonth).toFixed(2)) };
     }).filter(r => r.due > 0);
 
     const pendingCount = residentsWithDues.length;
@@ -557,7 +557,7 @@ export default function AdminPage() {
                                                                     <td className="p-3 font-medium text-gray-500">{t.category}</td>
                                                                     <td className="p-3 text-sm text-gray-500">{t.paymentMode}</td>
                                                                     <td className={`p-3 font-bold ${t.type === 'REVENUE' ? 'text-green-600' : 'text-red-600'}`}>
-                                                                        {t.type === 'REVENUE' ? '+' : '-'}₹{t.amount}
+                                                                        {t.type === 'REVENUE' ? '+' : '-'}₹{Number(t.amount).toFixed(2)}
                                                                     </td>
                                                                     <td className="p-3 text-right">
                                                                         <div className="flex items-center justify-end gap-2">
@@ -657,7 +657,17 @@ export default function AdminPage() {
 
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">Amount (₹)</label>
-                                            <input required type="number" min="0" step="0.01" className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white text-gray-900" value={transForm.amount} onChange={(e) => setTransForm({ ...transForm, amount: e.target.value })} placeholder="0.00" />
+                                            <input 
+                                                required 
+                                                type="number" 
+                                                min="0" 
+                                                step="0.01" 
+                                                className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white text-gray-900" 
+                                                value={transForm.amount} 
+                                                onChange={(e) => setTransForm({ ...transForm, amount: e.target.value })} 
+                                                onWheel={(e) => (e.target as HTMLElement).blur()}
+                                                placeholder="0.00" 
+                                            />
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -733,7 +743,7 @@ export default function AdminPage() {
                                                         </div>
                                                         <span className="bg-red-50 text-red-600 text-xs px-2 py-1 rounded font-bold">Due</span>
                                                     </div>
-                                                    <p className="text-gray-600 text-sm mb-4">Pending Amount: <span className="font-bold text-gray-900">₹{r.due}</span></p>
+                                                    <p className="text-gray-600 text-sm mb-4">Pending Amount: <span className="font-bold text-gray-900">₹{r.due.toFixed(2)}</span></p>
                                                 </div>
                                                 <div className="mt-4 border-t border-gray-100 pt-4">
                                                     <a
