@@ -90,3 +90,30 @@ export async function PUT(req: Request) {
         );
     }
 }
+
+export async function DELETE(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const id = searchParams.get('id');
+
+        if (!id) {
+            return NextResponse.json({ error: 'Transaction ID is required' }, { status: 400 });
+        }
+
+        const data = await getAppData();
+        const initialLength = data.transactions.length;
+        data.transactions = data.transactions.filter(t => t.id !== id);
+
+        if (data.transactions.length === initialLength) {
+            return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+        }
+
+        await saveAppData(data);
+        return NextResponse.json({ message: 'Transaction deleted successfully' });
+    } catch (error) {
+        return NextResponse.json(
+            { error: 'Failed to delete transaction' },
+            { status: 500 }
+        );
+    }
+}

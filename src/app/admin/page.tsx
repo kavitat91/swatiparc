@@ -4,8 +4,6 @@ import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { Trash2, Plus, ArrowUpRight, ArrowDownRight, Search, Users, CreditCard, ChevronDown, Check, X, FileText, Upload, Calendar, IndianRupee, Tag, BookOpen, MessageCircle, Bell, Pencil, ArrowLeft, LayoutDashboard, PieChart, Lock } from 'lucide-react';
 import { Resident, Transaction } from '@/types';
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
 
 export default function AdminPage() {
     // Admin Login State
@@ -236,6 +234,16 @@ export default function AdminPage() {
         }
     };
 
+    const handleDeleteTransaction = async (id: string) => {
+        if (!confirm('Are you sure you want to delete this transaction?')) return;
+        try {
+            await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' });
+            fetchData();
+        } catch (error) {
+            console.error('Error deleting transaction:', error);
+        }
+    };
+
     // Calculate pending maintenance
     const currentMonth = new Date().toISOString().slice(0, 7);
     const residentsWithDues = residents.map(r => {
@@ -456,19 +464,11 @@ export default function AdminPage() {
                                             Transactions for {new Date(transMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })}
                                         </h2>
                                         <div className="w-48">
-                                            <DatePicker
-                                                selected={transMonth ? new Date(transMonth + '-01') : new Date()}
-                                                onChange={(date: Date | null) => {
-                                                    if (date) {
-                                                        const y = date.getFullYear();
-                                                        const m = String(date.getMonth() + 1).padStart(2, '0');
-                                                        setTransMonth(`${y}-${m}`);
-                                                    }
-                                                }}
-                                                dateFormat="MMMM yyyy"
-                                                showMonthYearPicker
-                                                className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white text-gray-900 text-center font-medium cursor-pointer shadow-sm"
-                                                wrapperClassName="w-full"
+                                            <input
+                                                type="month"
+                                                value={transMonth}
+                                                onChange={(e) => setTransMonth(e.target.value)}
+                                                className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white text-gray-900 text-center font-medium shadow-sm cursor-pointer"
                                             />
                                         </div>
                                     </div>
@@ -560,9 +560,14 @@ export default function AdminPage() {
                                                                         {t.type === 'REVENUE' ? '+' : '-'}₹{t.amount}
                                                                     </td>
                                                                     <td className="p-3 text-right">
-                                                                        <button onClick={() => startEditTransaction(t)} className="p-1 hover:bg-gray-100 rounded text-gray-600 transition" title="Edit Transaction">
-                                                                            <Pencil className="w-4 h-4" />
-                                                                        </button>
+                                                                        <div className="flex items-center justify-end gap-2">
+                                                                            <button onClick={() => startEditTransaction(t)} className="p-1 hover:bg-gray-100 rounded text-gray-600 transition" title="Edit Transaction">
+                                                                                <Pencil className="w-4 h-4" />
+                                                                            </button>
+                                                                            <button onClick={() => handleDeleteTransaction(t.id)} className="p-1 hover:bg-red-50 rounded text-red-600 transition" title="Delete Transaction">
+                                                                                <Trash2 className="w-4 h-4" />
+                                                                            </button>
+                                                                        </div>
                                                                     </td>
                                                                 </tr>
                                                             );
@@ -588,18 +593,11 @@ export default function AdminPage() {
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
                                             <div className="w-full">
-                                                <DatePicker
-                                                    selected={transForm.date ? new Date(transForm.date) : null}
-                                                    onChange={(date: Date | null) => {
-                                                        if (date) {
-                                                            const offset = date.getTimezoneOffset();
-                                                            const localDate = new Date(date.getTime() - (offset * 60 * 1000));
-                                                            setTransForm({ ...transForm, date: localDate.toISOString().split('T')[0] });
-                                                        }
-                                                    }}
-                                                    dateFormat="dd/MM/yyyy"
+                                                <input
+                                                    type="date"
+                                                    value={transForm.date}
+                                                    onChange={(e) => setTransForm({ ...transForm, date: e.target.value })}
                                                     className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white text-gray-900"
-                                                    wrapperClassName="w-full"
                                                 />
                                             </div>
                                         </div>
@@ -764,19 +762,11 @@ export default function AdminPage() {
                                         <PieChart className="w-5 h-5" /> Financial Reports
                                     </h2>
                                     <div className="w-48">
-                                        <DatePicker
-                                            selected={reportMonth ? new Date(reportMonth + '-01') : new Date()}
-                                            onChange={(date: Date | null) => {
-                                                if (date) {
-                                                    const y = date.getFullYear();
-                                                    const m = String(date.getMonth() + 1).padStart(2, '0');
-                                                    setReportMonth(`${y}-${m}`);
-                                                }
-                                            }}
-                                            dateFormat="MMMM yyyy"
-                                            showMonthYearPicker
+                                        <input
+                                            type="month"
+                                            value={reportMonth}
+                                            onChange={(e) => setReportMonth(e.target.value)}
                                             className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white text-gray-900 text-center font-medium cursor-pointer"
-                                            wrapperClassName="w-full"
                                         />
                                     </div>
                                 </div>
