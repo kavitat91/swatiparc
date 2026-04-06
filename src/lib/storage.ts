@@ -3,9 +3,14 @@ import { Redis } from '@upstash/redis';
 
 // Initialize Upstash Redis client
 // Note: You must add UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN to your .env / Vercel Environment Variables
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+// console.log("Redis Initialization - URL:", redisUrl ? `[SET] ${redisUrl}` : "[UNDEFINED]");
+
 const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL || 'http://localhost:8079',
-    token: process.env.UPSTASH_REDIS_REST_TOKEN || 'example_token',
+    url: redisUrl || 'http://localhost:8079',
+    token: redisToken || 'example_token',
 });
 
 const defaultData: AppData = {
