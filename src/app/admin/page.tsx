@@ -488,7 +488,7 @@ export default function AdminPage() {
                                         <div className="relative w-full md:w-48">
                                             <select
                                                 value={filterType}
-                                                onChange={(e) => setFilterType(e.target.value as any)}
+                                                onChange={(e) => setFilterType(e.target.value as "ALL" | "REVENUE" | "EXPENSE")}
                                                 className="w-full appearance-none pl-4 pr-10 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-900"
                                             >
                                                 <option value="ALL">All Types</option>
@@ -647,7 +647,7 @@ export default function AdminPage() {
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
                                             <div className="relative">
-                                                <select className="w-full appearance-none p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white pr-10 text-gray-900" value={transForm.paymentMode} onChange={(e) => setTransForm({ ...transForm, paymentMode: e.target.value as any })}>
+                                                <select className="w-full appearance-none p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white pr-10 text-gray-900" value={transForm.paymentMode} onChange={(e) => setTransForm({ ...transForm, paymentMode: e.target.value as "UPI" | "CASH" | "CARD" | "NET_BANKING" })}>
                                                     <option value="UPI">UPI</option>
                                                     <option value="CASH">Cash</option>
                                                     <option value="CARD">Card</option>
