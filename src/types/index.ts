@@ -13,7 +13,7 @@ export interface Transaction {
   category: string;
   amount: number;
   description: string;
-  paymentMode: 'CASH' | 'UPI' | 'CARD' | 'NET_BANKING';
+  paymentMode: 'CASH' | 'UPI' | 'CARD' | 'NET_BANKING' | 'CHEQUE';
   spender?: string; // For expenses: who spent it
   isRefundable?: boolean; // For expenses: is the spender liable for refund
   residentId?: string; // For revenue: who paid (link to resident)

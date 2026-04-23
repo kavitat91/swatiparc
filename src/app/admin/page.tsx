@@ -19,6 +19,7 @@ export default function AdminPage() {
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [transMonth, setTransMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [viewingInvoice, setViewingInvoice] = useState<string | null>(null);
 
     // Transaction Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -32,7 +33,7 @@ export default function AdminPage() {
         amount: string;
         description: string;
         date: string;
-        paymentMode: 'CASH' | 'UPI' | 'CARD' | 'NET_BANKING';
+        paymentMode: 'CASH' | 'UPI' | 'CARD' | 'NET_BANKING' | 'CHEQUE';
         spender?: string;
         isRefundable?: boolean;
         residentId?: string;
@@ -193,10 +194,8 @@ export default function AdminPage() {
 
         // Invoice Mandatory Check
         if (transForm.type === 'EXPENSE') {
-            const isExempt = ['Security', 'Maintenance Fee', 'Maid Fee'].includes(transForm.category) || transForm.category.toLowerCase().includes('security') || transForm.category.toLowerCase().includes('maid');
-
-            if (!isExempt && !transForm.invoiceImage) {
-                alert("An Invoice is MANDATORY for this expense category. Please upload an image.");
+            if (!transForm.invoiceImage) {
+                alert("An Invoice is MANDATORY for all expenses. Please upload an image.");
                 return;
             }
         }
@@ -538,9 +537,9 @@ export default function AdminPage() {
                                                                                 ? `From: ${resident?.name || 'Unknown'}`
                                                                                 : `By: ${t.spender}${t.isRefundable ? ' (Refundable)' : ''}`}
                                                                             {t.invoiceImage && (
-                                                                                <a href={t.invoiceImage} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-gray-600 hover:text-gray-800 mt-1">
+                                                                                <button onClick={() => setViewingInvoice(t.invoiceImage || null)} className="flex items-center gap-1 text-gray-600 hover:text-gray-800 mt-1">
                                                                                     <FileText className="w-3 h-3" /> View Invoice
-                                                                                </a>
+                                                                                </button>
                                                                             )}
                                                                         </div>
                                                                         {t.type === 'REVENUE' && resident && (
@@ -586,8 +585,8 @@ export default function AdminPage() {
                                     </h3>
                                     <form onSubmit={handleCreateTransaction} className="space-y-4">
                                         <div className="grid grid-cols-2 gap-4">
-                                            <button type="button" onClick={() => setTransForm({ ...transForm, type: 'REVENUE' })} className={`py-2 rounded-lg font-bold transition ${transForm.type === 'REVENUE' ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Revenue</button>
-                                            <button type="button" onClick={() => setTransForm({ ...transForm, type: 'EXPENSE' })} className={`py-2 rounded-lg font-bold transition ${transForm.type === 'EXPENSE' ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Expense</button>
+                                            <button type="button" onClick={() => setTransForm({ ...transForm, type: 'REVENUE', category: 'Maintenance Fee' })} className={`py-2 rounded-lg font-bold transition ${transForm.type === 'REVENUE' ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Revenue</button>
+                                            <button type="button" onClick={() => setTransForm({ ...transForm, type: 'EXPENSE', category: 'Electricity Bill' })} className={`py-2 rounded-lg font-bold transition ${transForm.type === 'EXPENSE' ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Expense</button>
                                         </div>
 
                                         <div>
@@ -645,11 +644,12 @@ export default function AdminPage() {
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
                                             <div className="relative">
-                                                <select className="w-full appearance-none p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white pr-10 text-gray-900" value={transForm.paymentMode} onChange={(e) => setTransForm({ ...transForm, paymentMode: e.target.value as "UPI" | "CASH" | "CARD" | "NET_BANKING" })}>
+                                                <select className="w-full appearance-none p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white pr-10 text-gray-900" value={transForm.paymentMode} onChange={(e) => setTransForm({ ...transForm, paymentMode: e.target.value as "UPI" | "CASH" | "CARD" | "NET_BANKING" | "CHEQUE" })}>
                                                     <option value="UPI">UPI</option>
                                                     <option value="CASH">Cash</option>
                                                     <option value="CARD">Card</option>
                                                     <option value="NET_BANKING">Net Banking</option>
+                                                    <option value="CHEQUE">Cheque</option>
                                                 </select>
                                                 <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                                             </div>
@@ -677,7 +677,7 @@ export default function AdminPage() {
                                         {transForm.type === 'EXPENSE' && (
                                             <div className="border-t border-gray-100 pt-4">
                                                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                                                    <Upload className="w-4 h-4" /> Upload Invoice {(['Security', 'Maintenance Fee', 'Maid Fee'].includes(transForm.category) ? '(Optional)' : '(Required)')}
+                                                    <Upload className="w-4 h-4" /> Upload Invoice (Required)
                                                 </label>
                                                 <input
                                                     type="file"
@@ -790,15 +790,25 @@ export default function AdminPage() {
                                     // Category Breakdown
                                     const categoryData = monthlyTrans.reduce((acc, t) => {
                                         if (!acc[t.category]) acc[t.category] = { revenue: 0, expense: 0 };
-                                        if (t.type === 'REVENUE') acc[t.category].revenue += t.amount;
-                                        else acc[t.category].expense += t.amount;
+                                        if (t.type === 'REVENUE') acc[t.category].revenue += Number(t.amount);
+                                        else acc[t.category].expense += Number(t.amount);
                                         return acc;
                                     }, {} as Record<string, { revenue: number, expense: number }>);
+
+                                    // Refunds Owed Logic (All-Time)
+                                    const allTimeRefundableTrans = transactions.filter(t => t.type === 'EXPENSE' && t.isRefundable);
+                                    const owedBySpender = allTimeRefundableTrans.reduce((acc, t) => {
+                                        if (!t.spender) return acc;
+                                        if (!acc[t.spender]) acc[t.spender] = 0;
+                                        acc[t.spender] += Number(t.amount);
+                                        return acc;
+                                    }, {} as Record<string, number>);
+                                    const totalOwed = Object.values(owedBySpender).reduce((sum, val) => sum + val, 0);
 
                                     return (
                                         <>
                                             {/* Summary Cards */}
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                                                     <p className="text-sm text-gray-500 font-medium">Total Income</p>
                                                     <p className="text-2xl font-bold text-green-600 mt-2">₹{totalIncome.toFixed(2)}</p>
@@ -813,10 +823,29 @@ export default function AdminPage() {
                                                         ₹{netBalance.toFixed(2)}
                                                     </p>
                                                 </div>
+                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-orange-100">
+                                                    <p className="text-sm text-gray-500 font-medium whitespace-nowrap">Refunds Owed</p>
+                                                    <p className="text-2xl font-bold text-orange-600 mt-2">₹{totalOwed.toFixed(2)}</p>
+                                                </div>
                                             </div>
 
+                                            {/* Refunds Owed Breakdown */}
+                                            {Object.keys(owedBySpender).length > 0 && (
+                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-orange-200 mt-6">
+                                                    <h3 className="font-bold text-gray-800 mb-4">Pending Refunds by Spender (All-Time)</h3>
+                                                    <div className="space-y-3">
+                                                        {Object.entries(owedBySpender).map(([spender, amt]) => (
+                                                            <div key={spender} className="flex justify-between items-center p-3 hover:bg-orange-50 rounded-lg transition border border-transparent hover:border-orange-100">
+                                                                <span className="font-medium text-gray-700">{spender}</span>
+                                                                <span className="font-bold text-orange-600">₹{amt.toFixed(2)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {/* Breakdown */}
-                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mt-6">
                                                 <h3 className="font-bold text-gray-800 mb-4">Category Breakdown</h3>
                                                 <div className="space-y-3">
                                                     {Object.keys(categoryData).length === 0 ? (
@@ -843,6 +872,28 @@ export default function AdminPage() {
 
                 </div>
             </main >
+
+            {/* INVOICE MODAL */}
+            {viewingInvoice && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setViewingInvoice(null)}>
+                    <div className="relative max-w-4xl w-full max-h-[90vh] bg-white rounded-xl shadow-2xl p-4 flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-bold">Invoice Preview</h3>
+                            <button onClick={() => setViewingInvoice(null)} className="p-2 hover:bg-gray-100 rounded-full transition">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-auto rounded border border-gray-200">
+                            <img src={viewingInvoice} alt="Invoice" className="w-full h-auto object-contain" />
+                        </div>
+                        <div className="mt-4 flex justify-end">
+                            <a href={viewingInvoice} download="invoice.png" className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 font-bold transition">
+                                Download
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

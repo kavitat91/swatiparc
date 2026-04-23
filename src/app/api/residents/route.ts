@@ -84,3 +84,34 @@ export async function PUT(req: Request) {
         );
     }
 }
+
+export async function DELETE(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const id = searchParams.get('id');
+
+        if (!id) {
+            return NextResponse.json({ error: 'Resident ID is required' }, { status: 400 });
+        }
+
+        const data = await getAppData();
+        const initialLength = data.residents.length;
+        
+        data.residents = data.residents.filter(r => r.id !== id);
+
+        if (data.residents.length === initialLength) {
+            return NextResponse.json({ error: 'Resident not found' }, { status: 404 });
+        }
+
+        // Also delete associated transactions
+        data.transactions = data.transactions.filter(t => t.residentId !== id);
+
+        await saveAppData(data);
+        return NextResponse.json({ message: 'Resident deleted successfully' });
+    } catch (error) {
+        return NextResponse.json(
+            { error: 'Failed to delete resident' },
+            { status: 500 }
+        );
+    }
+}
