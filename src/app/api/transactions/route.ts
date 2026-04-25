@@ -12,7 +12,7 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { type, category, amount, description, date, paymentMode, spender, isRefundable, residentId, invoiceImage } = body;
+        const { type, category, amount, description, date, paymentMode, spender, isRefundable, isSettled, residentId, invoiceImage } = body;
 
         if (!type || !amount || !category || !paymentMode) {
             return NextResponse.json(
@@ -32,6 +32,7 @@ export async function POST(req: Request) {
             paymentMode,
             spender,
             isRefundable,
+            isSettled,
             residentId,
             invoiceImage,
         };
@@ -48,10 +49,10 @@ export async function POST(req: Request) {
     }
 }
 
-export async function PUT(req: Request) {
+    export async function PUT(req: Request) {
     try {
         const body = await req.json();
-        const { id, type, category, amount, description, date, paymentMode, spender, isRefundable, residentId, invoiceImage } = body;
+        const { id, type, category, amount, description, date, paymentMode, spender, isRefundable, isSettled, residentId, invoiceImage } = body;
 
         if (!id || !type || !amount || !category || !paymentMode) {
             return NextResponse.json(
@@ -77,6 +78,7 @@ export async function PUT(req: Request) {
             paymentMode,
             spender,
             isRefundable,
+            isSettled,
             residentId,
             invoiceImage,
         };

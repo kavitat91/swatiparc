@@ -33,7 +33,7 @@ export default function AdminPage() {
         amount: string;
         description: string;
         date: string;
-        paymentMode: 'CASH' | 'UPI' | 'CARD' | 'NET_BANKING' | 'CHEQUE';
+        paymentMode: 'CASH' | 'UPI' | 'CARD' | 'NET_BANKING' | 'CHEQUE' | 'ADJUSTMENT';
         spender?: string;
         isRefundable?: boolean;
         residentId?: string;
@@ -179,6 +179,42 @@ export default function AdminPage() {
         });
     };
 
+    const handleSettleRefunds = async (spenderName: string, amount: number) => {
+        if (!confirm(`Are you sure you want to settle ₹${amount} for ${spenderName} against their Maintenance Due? This will create an offsetting Maintenance Fee entry.`)) return;
+        setLoading(true);
+        try {
+            const unsettled = transactions.filter(t => t.type === 'EXPENSE' && t.isRefundable && !t.isSettled && t.spender === spenderName);
+            for (const t of unsettled) {
+                await fetch('/api/transactions', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...t, isSettled: true })
+                });
+            }
+            const resident = residents.find(r => r.name === spenderName);
+            await fetch('/api/transactions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'REVENUE',
+                    category: 'Maintenance Fee',
+                    amount: amount.toString(),
+                    description: `Adjusted against pending refunds for out-of-pocket expenses.`,
+                    date: new Date().toISOString().split('T')[0],
+                    paymentMode: 'ADJUSTMENT',
+                    residentId: resident?.id || ''
+                })
+            });
+            await fetchData();
+            alert("Refund settled and adjusted successfully!");
+        } catch (error) {
+            console.error('Error settling refund:', error);
+            alert("Failed to settle refund.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleCreateTransaction = async (e: FormEvent) => {
         e.preventDefault();
 
@@ -249,9 +285,14 @@ export default function AdminPage() {
         const paidThisMonth = transactions
             .filter(t => t.residentId === r.id && t.type === 'REVENUE' && t.date.startsWith(currentMonth))
             .reduce((sum, t) => sum + Number(t.amount), 0);
+            
+        const unsettledRefunds = transactions
+            .filter(t => t.type === 'EXPENSE' && t.isRefundable && !t.isSettled && t.spender === r.name)
+            .reduce((sum, t) => sum + Number(t.amount), 0);
+            
         const expected = r.flatNumber === 'FF' ? 4500 : 3000;
-        return { ...r, paid: paidThisMonth, due: Number((expected - paidThisMonth).toFixed(2)) };
-    }).filter(r => r.due > 0);
+        return { ...r, paid: paidThisMonth, unsettledRefunds, due: Number((expected - paidThisMonth).toFixed(2)) };
+    }).filter(r => r.due > 0 || r.unsettledRefunds > 0);
 
     const pendingCount = residentsWithDues.length;
     const isLate = new Date().getDate() > 22;
@@ -644,12 +685,13 @@ export default function AdminPage() {
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
                                             <div className="relative">
-                                                <select className="w-full appearance-none p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white pr-10 text-gray-900" value={transForm.paymentMode} onChange={(e) => setTransForm({ ...transForm, paymentMode: e.target.value as "UPI" | "CASH" | "CARD" | "NET_BANKING" | "CHEQUE" })}>
+                                                <select className="w-full appearance-none p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white pr-10 text-gray-900" value={transForm.paymentMode} onChange={(e) => setTransForm({ ...transForm, paymentMode: e.target.value as "UPI" | "CASH" | "CARD" | "NET_BANKING" | "CHEQUE" | "ADJUSTMENT" })}>
                                                     <option value="UPI">UPI</option>
                                                     <option value="CASH">Cash</option>
                                                     <option value="CARD">Card</option>
                                                     <option value="NET_BANKING">Net Banking</option>
                                                     <option value="CHEQUE">Cheque</option>
+                                                    <option value="ADJUSTMENT">Adjustment</option>
                                                 </select>
                                                 <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                                             </div>
@@ -741,9 +783,22 @@ export default function AdminPage() {
                                                                 <p className="text-sm text-gray-500">{r.role || 'Owner'}</p>
                                                             </div>
                                                         </div>
-                                                        <span className="bg-red-50 text-red-600 text-xs px-2 py-1 rounded font-bold">Due</span>
+                                                        {r.due > 0 && <span className="bg-red-50 text-red-600 text-xs px-2 py-1 rounded font-bold">Due</span>}
                                                     </div>
-                                                    <p className="text-gray-600 text-sm mb-4">Pending Amount: <span className="font-bold text-gray-900">₹{r.due.toFixed(2)}</span></p>
+                                                    <div className="mb-4">
+                                                        <p className="text-gray-600 text-sm">Pending Maintenance: <span className="font-bold text-gray-900">₹{r.due.toFixed(2)}</span></p>
+                                                        {r.unsettledRefunds > 0 && (
+                                                            <div className="mt-2 p-3 bg-orange-50 border border-orange-100 rounded-lg flex flex-col gap-2">
+                                                                <div className="flex justify-between items-center">
+                                                                    <p className="text-xs text-orange-800">Unsettled Refunds (Expenses paid by resident)</p>
+                                                                    <span className="font-bold text-orange-600">₹{r.unsettledRefunds.toFixed(2)}</span>
+                                                                </div>
+                                                                <button onClick={() => handleSettleRefunds(r.name, r.unsettledRefunds)} className="w-full text-xs bg-orange-600 hover:bg-orange-700 text-white px-2 py-2 rounded-md font-bold transition flex items-center justify-center gap-1">
+                                                                    <Check className="w-3 h-3" /> Settle against Maintenance Due
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <div className="mt-4 border-t border-gray-100 pt-4">
                                                     <a
@@ -796,7 +851,7 @@ export default function AdminPage() {
                                     }, {} as Record<string, { revenue: number, expense: number }>);
 
                                     // Refunds Owed Logic (All-Time)
-                                    const allTimeRefundableTrans = transactions.filter(t => t.type === 'EXPENSE' && t.isRefundable);
+                                    const allTimeRefundableTrans = transactions.filter(t => t.type === 'EXPENSE' && t.isRefundable && !t.isSettled);
                                     const owedBySpender = allTimeRefundableTrans.reduce((acc, t) => {
                                         if (!t.spender) return acc;
                                         if (!acc[t.spender]) acc[t.spender] = 0;
@@ -837,7 +892,12 @@ export default function AdminPage() {
                                                         {Object.entries(owedBySpender).map(([spender, amt]) => (
                                                             <div key={spender} className="flex justify-between items-center p-3 hover:bg-orange-50 rounded-lg transition border border-transparent hover:border-orange-100">
                                                                 <span className="font-medium text-gray-700">{spender}</span>
-                                                                <span className="font-bold text-orange-600">₹{amt.toFixed(2)}</span>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="font-bold text-orange-600">₹{amt.toFixed(2)}</span>
+                                                                    <button onClick={() => handleSettleRefunds(spender, amt)} className="text-xs bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded transition">
+                                                                        Settle & Adjust
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         ))}
                                                     </div>
