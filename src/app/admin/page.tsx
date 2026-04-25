@@ -292,7 +292,7 @@ export default function AdminPage() {
             
         const expected = r.flatNumber === 'FF' ? 4500 : 3000;
         return { ...r, paid: paidThisMonth, unsettledRefunds, due: Number((expected - paidThisMonth).toFixed(2)) };
-    }).filter(r => r.due > 0 || r.unsettledRefunds > 0);
+    }).filter(r => r.due > 0);
 
     const pendingCount = residentsWithDues.length;
     const isLate = new Date().getDate() > 22;
