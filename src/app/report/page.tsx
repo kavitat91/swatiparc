@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, PieChart, TrendingUp, TrendingDown, IndianRupee, Filter, X, ChevronDown } from 'lucide-react';
+import { ArrowLeft, PieChart, TrendingUp, TrendingDown, IndianRupee, Filter, X, ChevronDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { Transaction, Resident } from '@/types';
 import {
     BarChart,
@@ -117,38 +117,31 @@ export default function ReportPage() {
 
     // Resident Snapshot Logic
     const getResidentSnapshot = () => {
-        // Use selected month, or default to current month for this calculation if not selected
-        // However, if filters are clear, maybe we just show "Select a Month" or default to current.
-        // Let's rely on the filtered transactions, but for Expected Maintenance we need a specific month context usually.
-        // Ideally, we want to look at the dataset for the viewable period.
-
         return residents.map(res => {
-            // Filter transactions for this resident within the current filtered view
-            // Note: If 'selectedMonth' is empty, this aggregates ALL TIME.
-            // If 'selectedMonth' is set, it aggregates for that month.
-
             const resStats = filteredTransactions.reduce((acc, t) => {
                 const isResident = t.residentId === res.id;
-                const isSpender = t.type === 'EXPENSE' && t.spender === res.name; // Name matching for expenses based on our new Dropdown
+                const isSpender = t.type === 'EXPENSE' && t.spender === res.name;
 
                 if (t.type === 'REVENUE' && isResident) {
-                    acc.paid += t.amount;
+                    acc.paid += Number(t.amount);
                 }
 
                 if (t.type === 'EXPENSE' && isSpender) {
-                    acc.spent += t.amount;
-                    if (t.isRefundable) {
-                        acc.refundable += t.amount;
-                    }
+                    acc.spent += Number(t.amount);
                 }
                 return acc;
-            }, { paid: 0, spent: 0, refundable: 0 });
+            }, { paid: 0, spent: 0 });
 
-            // Expected Maintenance Rule
-            // If we are viewing a specific month, rule applies once.
-            // If we are viewing multiple months, it's ambiguous. 
-            // For now, let's assume if no month selected -> Expected = 0 (or show N/A) to avoid confusion.
-            // Or better, set default selectedMonth to current month on simple load.
+            // All-Time Refund Ledger
+            const totalRefundable = transactions
+                .filter(t => t.type === 'EXPENSE' && t.isRefundable && t.spender === res.name)
+                .reduce((sum, t) => sum + Number(t.amount), 0);
+                
+            const totalSettled = transactions
+                .filter(t => t.type === 'REVENUE' && t.paymentMode === 'ADJUSTMENT' && t.residentId === res.id)
+                .reduce((sum, t) => sum + Number(t.amount), 0);
+                
+            const netRefundable = totalRefundable - totalSettled;
 
             let expected = 0;
             if (selectedMonth) {
@@ -161,12 +154,34 @@ export default function ReportPage() {
                 ...res,
                 ...resStats,
                 expected,
-                due
+                due,
+                netRefundable
             };
         });
     };
 
     const residentSnapshot = getResidentSnapshot();
+
+    // Additional Insights Data
+    const categoryData = filteredTransactions.reduce((acc, t) => {
+        if (!acc[t.category]) acc[t.category] = { revenue: 0, expense: 0 };
+        if (t.type === 'REVENUE') acc[t.category].revenue += Number(t.amount);
+        else acc[t.category].expense += Number(t.amount);
+        return acc;
+    }, {} as Record<string, { revenue: number, expense: number }>);
+    const sortedCategories = Object.entries(categoryData).sort((a, b) => b[1].expense - a[1].expense);
+    const highestExpenseCat = sortedCategories.filter(c => c[1].expense > 0)[0];
+
+    const expectedThisPeriod = residents.reduce((sum, r) => sum + (r.flatNumber === 'FF' ? 4500 : 3000), 0); // Note: Simplified for insight if not exactly one month
+    const maintenanceCollected = filteredTransactions.filter(t => t.type === 'REVENUE' && t.category === 'Maintenance Fee').reduce((sum, t) => sum + Number(t.amount), 0);
+    const collectionPercentage = expectedThisPeriod > 0 ? Math.min(100, Math.round((maintenanceCollected / expectedThisPeriod) * 100)) : 0;
+    const residentsPaidCount = residents.filter(r => {
+        const paid = filteredTransactions.filter(t => t.residentId === r.id && t.type === 'REVENUE').reduce((sum, t) => sum + Number(t.amount), 0);
+        return paid >= (r.flatNumber === 'FF' ? 4500 : 3000);
+    }).length;
+
+    // All-time owed logic for summary
+    const totalAllTimeOwed = residentSnapshot.reduce((sum, r) => sum + r.netRefundable, 0);
 
     return (
         <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
@@ -254,37 +269,113 @@ export default function ReportPage() {
             </header>
 
             <main className="p-8 max-w-7xl mx-auto">
+                {/* Financial Health Banner */}
+                <div className={`mb-6 p-4 rounded-xl flex items-center gap-4 shadow-sm border ${netPnL >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className={`p-3 rounded-full ${netPnL >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                        {netPnL >= 0 ? <ArrowUpRight className="w-6 h-6" /> : <ArrowDownRight className="w-6 h-6" />}
+                    </div>
+                    <div>
+                        <h3 className={`font-bold text-lg ${netPnL >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+                            {netPnL >= 0 ? 'Positive Cash Flow' : 'Deficit This Period'}
+                        </h3>
+                        <p className={`text-sm ${netPnL >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                            {netPnL >= 0 
+                                ? `Great job! The apartment saved ₹${netPnL.toFixed(2)} in the selected period.` 
+                                : `Careful! The apartment spent ₹${Math.abs(netPnL).toFixed(2)} more than it collected.`}
+                        </p>
+                    </div>
+                </div>
+
                 {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
-                        <div className="p-3 bg-green-100 rounded-full text-green-600">
-                            <TrendingUp className="w-8 h-8" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-500 font-medium">Total Revenue</p>
-                            <h3 className="text-2xl font-bold text-gray-900 flex items-center"><IndianRupee className="w-5 h-5" />{totalRevenue.toFixed(2)}</h3>
-                        </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                        <p className="text-sm text-gray-500 font-medium">Total Revenue</p>
+                        <h3 className="text-2xl font-bold text-green-600 mt-2">₹{totalRevenue.toFixed(2)}</h3>
                     </div>
 
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
-                        <div className="p-3 bg-red-100 rounded-full text-red-600">
-                            <TrendingDown className="w-8 h-8" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-500 font-medium">Total Expenses</p>
-                            <h3 className="text-2xl font-bold text-gray-900 flex items-center"><IndianRupee className="w-5 h-5" />{totalExpense.toFixed(2)}</h3>
-                        </div>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                        <p className="text-sm text-gray-500 font-medium">Total Expenses</p>
+                        <h3 className="text-2xl font-bold text-red-600 mt-2">₹{totalExpense.toFixed(2)}</h3>
                     </div>
 
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
-                        <div className={`p-3 rounded-full ${netPnL >= 0 ? 'bg-indigo-100 text-indigo-600' : 'bg-orange-100 text-orange-600'}`}>
-                            <IndianRupee className="w-8 h-8" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-500 font-medium">Net PnL</p>
-                            <h3 className={`text-2xl font-bold flex items-center ${netPnL >= 0 ? 'text-indigo-600' : 'text-orange-600'}`}>
-                                <IndianRupee className="w-5 h-5" />{netPnL.toFixed(2)}
-                            </h3>
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                        <p className="text-sm text-gray-500 font-medium">Net Balance</p>
+                        <h3 className={`text-2xl font-bold mt-2 ${netPnL >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                            ₹{netPnL.toFixed(2)}
+                        </h3>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100 flex flex-col justify-center">
+                        <p className="text-sm text-gray-500 font-medium whitespace-nowrap">Refunds Owed (All-Time)</p>
+                        <p className="text-2xl font-bold text-orange-600 mt-2">₹{totalAllTimeOwed.toFixed(2)}</p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+                    {/* Visual Income vs Expense Bar */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <h3 className="font-bold text-gray-800 mb-4">Income vs Expense Ratio</h3>
+                        {totalRevenue === 0 && totalExpense === 0 ? (
+                            <p className="text-gray-400 text-sm italic">No data yet</p>
+                        ) : (
+                            <div className="space-y-2">
+                                <div className="flex w-full h-4 rounded-full overflow-hidden bg-gray-100">
+                                    <div className="bg-green-500 h-full" style={{ width: `${(totalRevenue / (totalRevenue + totalExpense || 1)) * 100}%` }}></div>
+                                    <div className="bg-red-500 h-full" style={{ width: `${(totalExpense / (totalRevenue + totalExpense || 1)) * 100}%` }}></div>
+                                </div>
+                                <div className="flex justify-between text-xs font-medium text-gray-500">
+                                    <span className="text-green-600">{Math.round((totalRevenue / (totalRevenue + totalExpense || 1)) * 100)}% Income</span>
+                                    <span className="text-red-600">{Math.round((totalExpense / (totalRevenue + totalExpense || 1)) * 100)}% Expense</span>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Collection Insight (Only relevant if looking at a specific month) */}
+                        {selectedMonth && (
+                            <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                                <h4 className="text-sm font-bold text-blue-900 mb-1">Maintenance Collection</h4>
+                                <p className="text-xs text-blue-700 mb-2">{residentsPaidCount} out of {residents.length} residents fully paid</p>
+                                <div className="w-full bg-blue-200 rounded-full h-2.5">
+                                  <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${collectionPercentage}%` }}></div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Top Expense & Category Breakdown */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <h3 className="font-bold text-gray-800 mb-4">Highest Expense Category</h3>
+                        {highestExpenseCat ? (
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="w-12 h-12 bg-red-100 text-red-600 rounded-xl flex items-center justify-center">
+                                    <PieChart className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <p className="text-lg font-bold text-gray-900">{highestExpenseCat[0]}</p>
+                                    <p className="text-sm text-gray-500">₹{highestExpenseCat[1].expense.toFixed(2)} spent</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-gray-400 text-sm italic mb-6">No expenses recorded.</p>
+                        )}
+
+                        <div className="space-y-4 border-t border-gray-100 pt-6">
+                            <h4 className="text-sm font-bold text-gray-700 mb-2">Expense Breakdown</h4>
+                            {sortedCategories.filter(c => c[1].expense > 0).length === 0 ? (
+                                <p className="text-gray-400 text-xs italic">No expenses to break down.</p>
+                            ) : (
+                                sortedCategories.filter(c => c[1].expense > 0).map(([cat, data]) => (
+                                    <div key={cat}>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="font-medium text-gray-700 text-sm">{cat}</span>
+                                            <span className="text-red-600 font-bold text-sm">₹{data.expense.toFixed(2)}</span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 rounded-full h-2">
+                                            <div className="bg-red-400 h-2 rounded-full" style={{ width: `${(data.expense / totalExpense) * 100}%` }}></div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>
@@ -382,7 +473,7 @@ export default function ReportPage() {
                                         <td className="p-3 text-right text-gray-200">|</td>
                                         <td className="p-3 text-right text-gray-600">₹{r.spent}</td>
                                         <td className="p-3 text-right font-bold text-orange-500">
-                                            {r.refundable > 0 ? `₹${r.refundable}` : '-'}
+                                            {r.netRefundable > 0 ? `₹${r.netRefundable}` : '-'}
                                         </td>
                                     </tr>
                                 ))}
