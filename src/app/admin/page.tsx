@@ -179,18 +179,19 @@ export default function AdminPage() {
         });
     };
 
-    const handleSettleRefunds = async (spenderName: string, amount: number) => {
-        if (!confirm(`Are you sure you want to settle ₹${amount} for ${spenderName} against their Maintenance Due? This will create an offsetting Maintenance Fee entry.`)) return;
+    const handleSettleRefunds = async (spenderName: string, maxAmount: number) => {
+        const inputStr = prompt(`How much would you like to settle for ${spenderName}? (Max: ₹${maxAmount.toFixed(2)})`, maxAmount.toString());
+        if (!inputStr) return;
+        const amountToSettle = parseFloat(inputStr);
+        
+        if (isNaN(amountToSettle) || amountToSettle <= 0 || amountToSettle > maxAmount) {
+            alert(`Please enter a valid amount between 1 and ${maxAmount}.`);
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to settle ₹${amountToSettle} against their Maintenance Due? This will create an offsetting Maintenance Fee entry.`)) return;
         setLoading(true);
         try {
-            const unsettled = transactions.filter(t => t.type === 'EXPENSE' && t.isRefundable && !t.isSettled && t.spender === spenderName);
-            for (const t of unsettled) {
-                await fetch('/api/transactions', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...t, isSettled: true })
-                });
-            }
             const resident = residents.find(r => r.name === spenderName);
             await fetch('/api/transactions', {
                 method: 'POST',
@@ -198,7 +199,7 @@ export default function AdminPage() {
                 body: JSON.stringify({
                     type: 'REVENUE',
                     category: 'Maintenance Fee',
-                    amount: amount.toString(),
+                    amount: amountToSettle.toString(),
                     description: `Adjusted against pending refunds for out-of-pocket expenses.`,
                     date: new Date().toISOString().split('T')[0],
                     paymentMode: 'ADJUSTMENT',
@@ -206,7 +207,7 @@ export default function AdminPage() {
                 })
             });
             await fetchData();
-            alert("Refund settled and adjusted successfully!");
+            alert(`₹${amountToSettle} successfully settled and adjusted!`);
         } catch (error) {
             console.error('Error settling refund:', error);
             alert("Failed to settle refund.");
@@ -286,11 +287,18 @@ export default function AdminPage() {
             .filter(t => t.residentId === r.id && t.type === 'REVENUE' && t.date.startsWith(currentMonth))
             .reduce((sum, t) => sum + Number(t.amount), 0);
             
-        const unsettledRefunds = transactions
-            .filter(t => t.type === 'EXPENSE' && t.isRefundable && !t.isSettled && t.spender === r.name)
+        const expected = r.flatNumber === 'FF' ? 4500 : 3000;
+        
+        const totalRefundable = transactions
+            .filter(t => t.type === 'EXPENSE' && t.isRefundable && t.spender === r.name)
             .reduce((sum, t) => sum + Number(t.amount), 0);
             
-        const expected = r.flatNumber === 'FF' ? 4500 : 3000;
+        const totalSettled = transactions
+            .filter(t => t.type === 'REVENUE' && t.paymentMode === 'ADJUSTMENT' && t.residentId === r.id)
+            .reduce((sum, t) => sum + Number(t.amount), 0);
+            
+        const unsettledRefunds = totalRefundable - totalSettled;
+            
         return { ...r, paid: paidThisMonth, unsettledRefunds, due: Number((expected - paidThisMonth).toFixed(2)) };
     }).filter(r => r.due > 0);
 
@@ -849,19 +857,55 @@ export default function AdminPage() {
                                         else acc[t.category].expense += Number(t.amount);
                                         return acc;
                                     }, {} as Record<string, { revenue: number, expense: number }>);
+                                    const sortedCategories = Object.entries(categoryData).sort((a, b) => b[1].expense - a[1].expense);
+                                    const highestExpenseCat = sortedCategories.filter(c => c[1].expense > 0)[0];
 
-                                    // Refunds Owed Logic (All-Time)
-                                    const allTimeRefundableTrans = transactions.filter(t => t.type === 'EXPENSE' && t.isRefundable && !t.isSettled);
-                                    const owedBySpender = allTimeRefundableTrans.reduce((acc, t) => {
-                                        if (!t.spender) return acc;
-                                        if (!acc[t.spender]) acc[t.spender] = 0;
-                                        acc[t.spender] += Number(t.amount);
+                                    // Refunds Owed Logic (All-Time Ledger)
+                                    const owedBySpender = transactions.reduce((acc, t) => {
+                                        if (t.type === 'EXPENSE' && t.isRefundable && t.spender) {
+                                            if (!acc[t.spender]) acc[t.spender] = 0;
+                                            acc[t.spender] += Number(t.amount);
+                                        }
                                         return acc;
                                     }, {} as Record<string, number>);
-                                    const totalOwed = Object.values(owedBySpender).reduce((sum, val) => sum + val, 0);
+                                    
+                                    transactions.filter(t => t.type === 'REVENUE' && t.paymentMode === 'ADJUSTMENT').forEach(t => {
+                                        const resident = residents.find(r => r.id === t.residentId);
+                                        if (resident && resident.name && owedBySpender[resident.name]) {
+                                            owedBySpender[resident.name] -= Number(t.amount);
+                                        }
+                                    });
+                                    const actualOwedBySpender = Object.fromEntries(Object.entries(owedBySpender).filter(([_, amt]) => amt > 0));
+                                    const totalOwed = Object.values(actualOwedBySpender).reduce((sum, val) => sum + val, 0);
+
+                                    // Collection Rate
+                                    const expectedThisMonth = residents.reduce((sum, r) => sum + (r.flatNumber === 'FF' ? 4500 : 3000), 0);
+                                    const maintenanceCollected = monthlyTrans.filter(t => t.type === 'REVENUE' && t.category === 'Maintenance Fee').reduce((sum, t) => sum + t.amount, 0);
+                                    const collectionPercentage = expectedThisMonth > 0 ? Math.min(100, Math.round((maintenanceCollected / expectedThisMonth) * 100)) : 0;
+                                    const residentsPaidCount = residents.filter(r => {
+                                        const paid = monthlyTrans.filter(t => t.residentId === r.id && t.type === 'REVENUE').reduce((sum, t) => sum + t.amount, 0);
+                                        return paid >= (r.flatNumber === 'FF' ? 4500 : 3000);
+                                    }).length;
 
                                     return (
-                                        <>
+                                        <div className="space-y-6">
+                                            {/* Financial Health Banner */}
+                                            <div className={`p-4 rounded-xl flex items-center gap-4 shadow-sm border ${netBalance >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                                <div className={`p-3 rounded-full ${netBalance >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                                    {netBalance >= 0 ? <ArrowUpRight className="w-6 h-6" /> : <ArrowDownRight className="w-6 h-6" />}
+                                                </div>
+                                                <div>
+                                                    <h3 className={`font-bold text-lg ${netBalance >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+                                                        {netBalance >= 0 ? 'Positive Cash Flow' : 'Deficit This Month'}
+                                                    </h3>
+                                                    <p className={`text-sm ${netBalance >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                        {netBalance >= 0 
+                                                            ? `Great job! The apartment saved ₹${netBalance.toFixed(2)} this month.` 
+                                                            : `Careful! The apartment spent ₹${Math.abs(netBalance).toFixed(2)} more than it collected this month.`}
+                                                    </p>
+                                                </div>
+                                            </div>
+
                                             {/* Summary Cards */}
                                             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -884,46 +928,98 @@ export default function AdminPage() {
                                                 </div>
                                             </div>
 
-                                            {/* Refunds Owed Breakdown */}
-                                            {Object.keys(owedBySpender).length > 0 && (
-                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-orange-200 mt-6">
-                                                    <h3 className="font-bold text-gray-800 mb-4">Pending Refunds by Spender (All-Time)</h3>
-                                                    <div className="space-y-3">
-                                                        {Object.entries(owedBySpender).map(([spender, amt]) => (
-                                                            <div key={spender} className="flex justify-between items-center p-3 hover:bg-orange-50 rounded-lg transition border border-transparent hover:border-orange-100">
-                                                                <span className="font-medium text-gray-700">{spender}</span>
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="font-bold text-orange-600">₹{amt.toFixed(2)}</span>
-                                                                    <button onClick={() => handleSettleRefunds(spender, amt)} className="text-xs bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded transition">
-                                                                        Settle & Adjust
-                                                                    </button>
-                                                                </div>
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                {/* Visual Income vs Expense Bar */}
+                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                                    <h3 className="font-bold text-gray-800 mb-4">Income vs Expense Ratio</h3>
+                                                    {totalIncome === 0 && totalExpense === 0 ? (
+                                                        <p className="text-gray-400 text-sm italic">No data yet</p>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            <div className="flex w-full h-4 rounded-full overflow-hidden bg-gray-100">
+                                                                <div className="bg-green-500 h-full" style={{ width: `${(totalIncome / (totalIncome + totalExpense || 1)) * 100}%` }}></div>
+                                                                <div className="bg-red-500 h-full" style={{ width: `${(totalExpense / (totalIncome + totalExpense || 1)) * 100}%` }}></div>
                                                             </div>
-                                                        ))}
+                                                            <div className="flex justify-between text-xs font-medium text-gray-500">
+                                                                <span className="text-green-600">{Math.round((totalIncome / (totalIncome + totalExpense || 1)) * 100)}% Income</span>
+                                                                <span className="text-red-600">{Math.round((totalExpense / (totalIncome + totalExpense || 1)) * 100)}% Expense</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Collection Insight */}
+                                                    <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                                                        <h4 className="text-sm font-bold text-blue-900 mb-1">Maintenance Collection</h4>
+                                                        <p className="text-xs text-blue-700 mb-2">{residentsPaidCount} out of {residents.length} residents fully paid</p>
+                                                        <div className="w-full bg-blue-200 rounded-full h-2.5">
+                                                          <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${collectionPercentage}%` }}></div>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            )}
 
-                                            {/* Breakdown */}
-                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mt-6">
-                                                <h3 className="font-bold text-gray-800 mb-4">Category Breakdown</h3>
-                                                <div className="space-y-3">
-                                                    {Object.keys(categoryData).length === 0 ? (
-                                                        <p className="text-gray-500 text-center py-4">No data for this month.</p>
-                                                    ) : (
-                                                        Object.entries(categoryData).map(([cat, data]) => (
-                                                            <div key={cat} className="flex justify-between items-center p-3 hover:bg-gray-50 rounded-lg transition">
-                                                                <span className="font-medium text-gray-700">{cat}</span>
-                                                                <div className="text-right">
-                                                                    {data.revenue > 0 && <span className="text-green-600 font-bold block">+₹{data.revenue}</span>}
-                                                                    {data.expense > 0 && <span className="text-red-600 font-bold block">-₹{data.expense}</span>}
-                                                                </div>
+                                                {/* Top Expense Insight */}
+                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                                    <h3 className="font-bold text-gray-800 mb-4">Highest Expense Category</h3>
+                                                    {highestExpenseCat ? (
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-xl flex items-center justify-center">
+                                                                <PieChart className="w-6 h-6" />
                                                             </div>
-                                                        ))
+                                                            <div>
+                                                                <p className="text-lg font-bold text-gray-900">{highestExpenseCat[0]}</p>
+                                                                <p className="text-sm text-gray-500">₹{highestExpenseCat[1].expense.toFixed(2)} spent</p>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-gray-400 text-sm italic">No expenses recorded this month.</p>
                                                     )}
                                                 </div>
                                             </div>
-                                        </>
+
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                {/* Refunds Owed Breakdown */}
+                                                {Object.keys(actualOwedBySpender).length > 0 && (
+                                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-orange-200">
+                                                        <h3 className="font-bold text-gray-800 mb-4">Pending Refunds by Spender (All-Time)</h3>
+                                                        <div className="space-y-3">
+                                                            {Object.entries(actualOwedBySpender).map(([spender, amt]) => (
+                                                                <div key={spender} className="flex justify-between items-center p-3 hover:bg-orange-50 rounded-lg transition border border-transparent hover:border-orange-100">
+                                                                    <span className="font-medium text-gray-700">{spender}</span>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="font-bold text-orange-600">₹{amt.toFixed(2)}</span>
+                                                                        <button onClick={() => handleSettleRefunds(spender, amt)} className="text-xs bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded transition font-bold">
+                                                                            Settle Custom Amount
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Visual Category Breakdown */}
+                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                                                    <h3 className="font-bold text-gray-800 mb-4">Expense Breakdown</h3>
+                                                    <div className="space-y-4">
+                                                        {sortedCategories.filter(c => c[1].expense > 0).length === 0 ? (
+                                                            <p className="text-gray-500 text-center py-4 text-sm italic">No expenses for this month.</p>
+                                                        ) : (
+                                                            sortedCategories.filter(c => c[1].expense > 0).map(([cat, data]) => (
+                                                                <div key={cat}>
+                                                                    <div className="flex justify-between items-center mb-1">
+                                                                        <span className="font-medium text-gray-700 text-sm">{cat}</span>
+                                                                        <span className="text-red-600 font-bold text-sm">₹{data.expense}</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-gray-100 rounded-full h-2">
+                                                                        <div className="bg-red-400 h-2 rounded-full" style={{ width: `${(data.expense / totalExpense) * 100}%` }}></div>
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     );
                                 })()}
                             </div>
