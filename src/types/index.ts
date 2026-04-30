@@ -19,6 +19,7 @@ export interface Transaction {
   isSettled?: boolean; // For refunds: has it been adjusted against maintenance?
   residentId?: string; // For revenue: who paid (link to resident)
   invoiceImage?: string; // Base64 string of the invoice image
+  applicableMonth?: string; // Format: YYYY-MM, used for advance/late payments
 }
 
 export interface AppData {

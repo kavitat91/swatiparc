@@ -20,6 +20,7 @@ export default function AdminPage() {
     const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [transMonth, setTransMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [viewingInvoice, setViewingInvoice] = useState<string | null>(null);
+    const [selectedApplicableMonths, setSelectedApplicableMonths] = useState<string[]>([new Date().toISOString().slice(0, 7)]);
 
     // Transaction Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -158,6 +159,13 @@ export default function AdminPage() {
             residentId: transaction.residentId,
             invoiceImage: transaction.invoiceImage
         });
+        if (transaction.applicableMonth) {
+            setSelectedApplicableMonths([transaction.applicableMonth]);
+        } else if (transaction.type === 'REVENUE') {
+            setSelectedApplicableMonths([transaction.date.substring(0, 7)]);
+        } else {
+            setSelectedApplicableMonths([]);
+        }
         // Switch to transactions tab if not active? Actually the form is IN the transactions tab.
         // Scroll to form (optional, for better UX)
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
@@ -165,6 +173,7 @@ export default function AdminPage() {
 
     const cancelEditTransaction = () => {
         setEditingTransaction(null);
+        setSelectedApplicableMonths([new Date().toISOString().slice(0, 7)]);
         setTransForm({
             type: 'REVENUE',
             category: 'Maintenance Fee',
@@ -237,36 +246,63 @@ export default function AdminPage() {
             }
         }
 
-        try {
-            const url = editingTransaction ? '/api/transactions' : '/api/transactions';
-            const method = editingTransaction ? 'PUT' : 'POST';
-            const body = editingTransaction ? { ...transForm, id: editingTransaction.id } : transForm;
+        if (transForm.type === 'REVENUE' && transForm.category === 'Maintenance Fee' && selectedApplicableMonths.length === 0) {
+            alert("Please select at least one applicable month.");
+            return;
+        }
 
-            const res = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (res.ok) {
-                setTransForm({
-                    type: transForm.type,
-                    category: transForm.type === 'REVENUE' ? 'Maintenance Fee' : 'Electricity Bill',
-                    amount: '',
-                    description: '',
-                    date: new Date().toISOString().split('T')[0],
-                    paymentMode: 'UPI',
-                    isRefundable: false,
-                    residentId: '',
-                    spender: '',
-                    invoiceImage: undefined
-                });
-                setEditingTransaction(null);
-                fetchData();
+        setLoading(true);
+        try {
+            if (transForm.type === 'REVENUE' && transForm.category === 'Maintenance Fee' && selectedApplicableMonths.length > 1 && !editingTransaction) {
+                const totalAmount = parseFloat(transForm.amount);
+                const splitAmount = (totalAmount / selectedApplicableMonths.length).toFixed(2);
+                
+                for (const month of selectedApplicableMonths) {
+                    const body = { ...transForm, amount: splitAmount, applicableMonth: month };
+                    await fetch('/api/transactions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                    });
+                }
             } else {
-                alert("Failed to save transaction");
+                const url = editingTransaction ? '/api/transactions' : '/api/transactions';
+                const method = editingTransaction ? 'PUT' : 'POST';
+                const applicableMonth = transForm.type === 'REVENUE' && transForm.category === 'Maintenance Fee' ? selectedApplicableMonths[0] : undefined;
+                const body = editingTransaction ? { ...transForm, id: editingTransaction.id, applicableMonth } : { ...transForm, applicableMonth };
+
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                if (!res.ok) {
+                    alert("Failed to save transaction");
+                    return;
+                }
             }
+
+            setTransForm({
+                type: 'REVENUE',
+                category: 'Maintenance Fee',
+                amount: '',
+                description: '',
+                date: new Date().toISOString().split('T')[0],
+                paymentMode: 'UPI',
+                isRefundable: false,
+                residentId: '',
+                spender: '',
+                invoiceImage: undefined
+            });
+            setSelectedApplicableMonths([new Date().toISOString().slice(0, 7)]);
+            setEditingTransaction(null);
+            await fetchData();
+            alert("Transaction saved successfully!");
         } catch (error) {
             console.error('Error creating transaction:', error);
+            alert("Failed to save transaction.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -284,7 +320,7 @@ export default function AdminPage() {
     const currentMonth = new Date().toISOString().slice(0, 7);
     const residentsWithDues = residents.map(r => {
         const paidThisMonth = transactions
-            .filter(t => t.residentId === r.id && t.type === 'REVENUE' && t.date.startsWith(currentMonth))
+            .filter(t => t.residentId === r.id && t.type === 'REVENUE' && (t.applicableMonth ? t.applicableMonth === currentMonth : t.date.startsWith(currentMonth)))
             .reduce((sum, t) => sum + Number(t.amount), 0);
             
         const expected = r.flatNumber === 'FF' ? 4500 : 3000;
@@ -690,6 +726,37 @@ export default function AdminPage() {
                                                 <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                                             </div>
                                         </div>
+                                        {transForm.type === 'REVENUE' && transForm.category === 'Maintenance Fee' && (
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
+                                                    Applicable Month(s) 
+                                                    <span className="text-[10px] font-normal text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Hold Cmd/Ctrl to select multiple</span>
+                                                </label>
+                                                <div className="relative">
+                                                    <select 
+                                                        multiple
+                                                        className="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-500 bg-white text-gray-900 h-32" 
+                                                        value={selectedApplicableMonths} 
+                                                        onChange={(e) => {
+                                                            const options = Array.from(e.target.selectedOptions, option => option.value);
+                                                            setSelectedApplicableMonths(options);
+                                                        }}
+                                                    >
+                                                        {Array.from({ length: 12 }).map((_, i) => {
+                                                            const d = new Date();
+                                                            d.setMonth(d.getMonth() - 6 + i);
+                                                            const val = d.toISOString().slice(0, 7);
+                                                            return <option key={val} value={val} className="p-1">{d.toLocaleString('default', { month: 'long', year: 'numeric' })}</option>;
+                                                        })}
+                                                    </select>
+                                                </div>
+                                                {selectedApplicableMonths.length > 1 && (
+                                                    <p className="text-xs text-blue-600 mt-1 font-medium flex items-center gap-1">
+                                                        <Check className="w-3 h-3" /> Amount will be auto-split into {selectedApplicableMonths.length} transactions.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
                                             <div className="relative">

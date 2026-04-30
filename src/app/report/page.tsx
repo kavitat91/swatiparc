@@ -118,19 +118,28 @@ export default function ReportPage() {
     // Resident Snapshot Logic
     const getResidentSnapshot = () => {
         return residents.map(res => {
-            const resStats = filteredTransactions.reduce((acc, t) => {
-                const isResident = t.residentId === res.id;
-                const isSpender = t.type === 'EXPENSE' && t.spender === res.name;
-
-                if (t.type === 'REVENUE' && isResident) {
-                    acc.paid += Number(t.amount);
-                }
-
-                if (t.type === 'EXPENSE' && isSpender) {
-                    acc.spent += Number(t.amount);
+            // For expenses, use filteredTransactions to show what they spent in this period
+            const spent = filteredTransactions.reduce((acc, t) => {
+                if (t.type === 'EXPENSE' && t.spender === res.name) {
+                    return acc + Number(t.amount);
                 }
                 return acc;
-            }, { paid: 0, spent: 0 });
+            }, 0);
+
+            // For paid maintenance, calculate strictly based on the applicable month (not cash flow date)
+            const paid = transactions.reduce((acc, t) => {
+                const isResident = t.residentId === res.id;
+                const matchesMonth = selectedMonth 
+                    ? (t.applicableMonth ? t.applicableMonth === selectedMonth : t.date.startsWith(selectedMonth))
+                    : true; // If no month selected, show all-time paid
+
+                if (t.type === 'REVENUE' && isResident && matchesMonth) {
+                    return acc + Number(t.amount);
+                }
+                return acc;
+            }, 0);
+
+            const resStats = { paid, spent };
 
             // All-Time Refund Ledger
             const totalRefundable = transactions
