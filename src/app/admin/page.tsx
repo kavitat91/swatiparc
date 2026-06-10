@@ -137,11 +137,62 @@ export default function AdminPage() {
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setTransForm({ ...transForm, invoiceImage: reader.result as string });
-            };
-            reader.readAsDataURL(file);
+            if (file.type.startsWith('image/')) {
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800;
+                    const MAX_HEIGHT = 800;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height = Math.round(height * (MAX_WIDTH / width));
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width = Math.round(width * (MAX_HEIGHT / height));
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        ctx.drawImage(img, 0, 0, width, height);
+                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                        setTransForm(prev => ({ ...prev, invoiceImage: compressedBase64 }));
+                    } else {
+                        // Fallback to uncompressed if canvas context fails
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            setTransForm(prev => ({ ...prev, invoiceImage: reader.result as string }));
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                    URL.revokeObjectURL(img.src);
+                };
+                img.onerror = () => {
+                    // Fallback to uncompressed if image fails to load
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setTransForm(prev => ({ ...prev, invoiceImage: reader.result as string }));
+                    };
+                    reader.readAsDataURL(file);
+                    URL.revokeObjectURL(img.src);
+                };
+            } else {
+                // Not an image (e.g., PDF), just read as base64 directly
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setTransForm(prev => ({ ...prev, invoiceImage: reader.result as string }));
+                };
+                reader.readAsDataURL(file);
+            }
         }
     };
 
@@ -202,7 +253,7 @@ export default function AdminPage() {
         setLoading(true);
         try {
             const resident = residents.find(r => r.name === spenderName);
-            await fetch('/api/transactions', {
+            const res = await fetch('/api/transactions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -215,11 +266,15 @@ export default function AdminPage() {
                     residentId: resident?.id || ''
                 })
             });
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => null);
+                throw new Error(`${errorData?.error || res.statusText}`);
+            }
             await fetchData();
             alert(`₹${amountToSettle} successfully settled and adjusted!`);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error settling refund:', error);
-            alert("Failed to settle refund.");
+            alert(`Failed to settle refund: ${error.message || 'Unknown error'}`);
         } finally {
             setLoading(false);
         }
@@ -259,11 +314,15 @@ export default function AdminPage() {
                 
                 for (const month of selectedApplicableMonths) {
                     const body = { ...transForm, amount: splitAmount, applicableMonth: month };
-                    await fetch('/api/transactions', {
+                    const res = await fetch('/api/transactions', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(body),
                     });
+                    if (!res.ok) {
+                        const errorData = await res.json().catch(() => null);
+                        throw new Error(`Month ${month}: ${errorData?.error || res.statusText}`);
+                    }
                 }
             } else {
                 const url = editingTransaction ? '/api/transactions' : '/api/transactions';
@@ -277,7 +336,8 @@ export default function AdminPage() {
                     body: JSON.stringify(body),
                 });
                 if (!res.ok) {
-                    alert("Failed to save transaction");
+                    const errorData = await res.json().catch(() => null);
+                    alert(`Failed to save transaction: ${errorData?.error || res.statusText}`);
                     return;
                 }
             }
@@ -298,9 +358,9 @@ export default function AdminPage() {
             setEditingTransaction(null);
             await fetchData();
             alert("Transaction saved successfully!");
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error creating transaction:', error);
-            alert("Failed to save transaction.");
+            alert(`Failed to save transaction: ${error.message || 'Unknown error'}`);
         } finally {
             setLoading(false);
         }

@@ -33,8 +33,8 @@ export const saveAppData = async (data: AppData): Promise<void> => {
     try {
         // Save the entire data structure back to Redis
         await redis.set('appData', data);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error writing data to Redis:', error);
-        throw new Error('Failed to save data');
+        throw new Error(`Failed to save data: ${error.message || 'Unknown error'}`);
     }
 };

@@ -41,9 +41,9 @@ export async function POST(req: Request) {
         await saveAppData(data);
 
         return NextResponse.json(newTransaction);
-    } catch (error) {
+    } catch (error: any) {
         return NextResponse.json(
-            { error: 'Failed to create transaction' },
+            { error: error.message || 'Failed to create transaction' },
             { status: 500 }
         );
     }
