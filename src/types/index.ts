@@ -18,7 +18,9 @@ export interface Transaction {
   isRefundable?: boolean; // For expenses: is the spender liable for refund
   isSettled?: boolean; // For refunds: has it been adjusted against maintenance?
   residentId?: string; // For revenue: who paid (link to resident)
-  invoiceImage?: string; // Base64 string of the invoice image
+  invoiceImage?: string; // Base64 string of the invoice image (legacy)
+  invoiceImages?: string[]; // Array of Base64 strings of the invoice images
+  isReimbursement?: boolean; // Flag to indicate if this is a cash reimbursement to a resident
   applicableMonth?: string; // Format: YYYY-MM, used for advance/late payments
 }
 

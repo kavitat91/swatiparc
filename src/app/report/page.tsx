@@ -86,7 +86,7 @@ export default function ReportPage() {
             const amount = Number(t.amount);
             if (t.type === 'REVENUE') {
                 monthlyData[monthKey].revenue += amount;
-            } else {
+            } else if (!t.isReimbursement) {
                 monthlyData[monthKey].expense += amount;
             }
         });
@@ -110,7 +110,7 @@ export default function ReportPage() {
         .reduce((sum, t) => sum + Number(t.amount), 0);
 
     const totalExpense = filteredTransactions
-        .filter((t) => t.type === 'EXPENSE')
+        .filter((t) => t.type === 'EXPENSE' && !t.isReimbursement)
         .reduce((sum, t) => sum + Number(t.amount), 0);
 
     const netPnL = totalRevenue - totalExpense;
@@ -174,8 +174,11 @@ export default function ReportPage() {
     // Additional Insights Data
     const categoryData = filteredTransactions.reduce((acc, t) => {
         if (!acc[t.category]) acc[t.category] = { revenue: 0, expense: 0 };
-        if (t.type === 'REVENUE') acc[t.category].revenue += Number(t.amount);
-        else acc[t.category].expense += Number(t.amount);
+        if (t.type === 'REVENUE') {
+            acc[t.category].revenue += Number(t.amount);
+        } else if (!t.isReimbursement) {
+            acc[t.category].expense += Number(t.amount);
+        }
         return acc;
     }, {} as Record<string, { revenue: number, expense: number }>);
     const sortedCategories = Object.entries(categoryData).sort((a, b) => b[1].expense - a[1].expense);

@@ -19,7 +19,7 @@ export default function AdminPage() {
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [transMonth, setTransMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-    const [viewingInvoice, setViewingInvoice] = useState<string | null>(null);
+    const [viewingInvoice, setViewingInvoice] = useState<string[] | null>(null);
     const [selectedApplicableMonths, setSelectedApplicableMonths] = useState<string[]>([new Date().toISOString().slice(0, 7)]);
 
     // Transaction Filters
@@ -39,6 +39,8 @@ export default function AdminPage() {
         isRefundable?: boolean;
         residentId?: string;
         invoiceImage?: string;
+        invoiceImages: string[];
+        isReimbursement?: boolean;
     }>({
         type: 'REVENUE',
         category: 'Maintenance Fee',
@@ -46,7 +48,8 @@ export default function AdminPage() {
         description: '',
         date: new Date().toISOString().split('T')[0],
         paymentMode: 'UPI',
-        isRefundable: false
+        isRefundable: false,
+        invoiceImages: []
     });
 
     useEffect(() => {
@@ -134,66 +137,66 @@ export default function AdminPage() {
         fetchData();
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            if (file.type.startsWith('image/')) {
-                const img = new Image();
-                img.src = URL.createObjectURL(file);
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800;
-                    const MAX_HEIGHT = 800;
-                    let width = img.width;
-                    let height = img.height;
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
 
-                    if (width > height) {
-                        if (width > MAX_WIDTH) {
-                            height = Math.round(height * (MAX_WIDTH / width));
-                            width = MAX_WIDTH;
-                        }
-                    } else {
-                        if (height > MAX_HEIGHT) {
-                            width = Math.round(width * (MAX_HEIGHT / height));
-                            height = MAX_HEIGHT;
-                        }
-                    }
+        const processFile = (file: File): Promise<string> => {
+            return new Promise((resolve) => {
+                if (file.type.startsWith('image/')) {
+                    const img = new Image();
+                    img.src = URL.createObjectURL(file);
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const MAX_HEIGHT = 800;
+                        let width = img.width;
+                        let height = img.height;
 
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                        ctx.drawImage(img, 0, 0, width, height);
-                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
-                        setTransForm(prev => ({ ...prev, invoiceImage: compressedBase64 }));
-                    } else {
-                        // Fallback to uncompressed if canvas context fails
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            setTransForm(prev => ({ ...prev, invoiceImage: reader.result as string }));
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                    URL.revokeObjectURL(img.src);
-                };
-                img.onerror = () => {
-                    // Fallback to uncompressed if image fails to load
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        setTransForm(prev => ({ ...prev, invoiceImage: reader.result as string }));
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height = Math.round(height * (MAX_WIDTH / width));
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width = Math.round(width * (MAX_HEIGHT / height));
+                                height = MAX_HEIGHT;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                            ctx.drawImage(img, 0, 0, width, height);
+                            resolve(canvas.toDataURL('image/jpeg', 0.6));
+                        } else {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result as string);
+                            reader.readAsDataURL(file);
+                        }
+                        URL.revokeObjectURL(img.src);
                     };
+                    img.onerror = () => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(file);
+                        URL.revokeObjectURL(img.src);
+                    };
+                } else {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
                     reader.readAsDataURL(file);
-                    URL.revokeObjectURL(img.src);
-                };
-            } else {
-                // Not an image (e.g., PDF), just read as base64 directly
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    setTransForm(prev => ({ ...prev, invoiceImage: reader.result as string }));
-                };
-                reader.readAsDataURL(file);
-            }
-        }
+                }
+            });
+        };
+
+        const processedFiles = await Promise.all(files.map(processFile));
+        setTransForm(prev => ({ 
+            ...prev, 
+            invoiceImages: [...(prev.invoiceImages || []), ...processedFiles] 
+        }));
     };
 
     const startEditTransaction = (transaction: Transaction) => {
@@ -208,7 +211,9 @@ export default function AdminPage() {
             spender: transaction.spender,
             isRefundable: transaction.isRefundable,
             residentId: transaction.residentId,
-            invoiceImage: transaction.invoiceImage
+            invoiceImage: transaction.invoiceImage,
+            invoiceImages: transaction.invoiceImages || [],
+            isReimbursement: transaction.isReimbursement || false,
         });
         if (transaction.applicableMonth) {
             setSelectedApplicableMonths([transaction.applicableMonth]);
@@ -235,7 +240,9 @@ export default function AdminPage() {
             isRefundable: false,
             residentId: '',
             spender: '',
-            invoiceImage: undefined
+            invoiceImage: undefined,
+            invoiceImages: [],
+            isReimbursement: false
         });
     };
 
@@ -280,6 +287,48 @@ export default function AdminPage() {
         }
     };
 
+    const handleReimburseCash = async (spenderName: string, maxAmount: number) => {
+        const inputStr = prompt(`How much cash/bank transfer would you like to reimburse to ${spenderName}? (Max: ₹${maxAmount.toFixed(2)})`, maxAmount.toString());
+        if (!inputStr) return;
+        const amountToSettle = parseFloat(inputStr);
+        
+        if (isNaN(amountToSettle) || amountToSettle <= 0 || amountToSettle > maxAmount) {
+            alert(`Please enter a valid amount between 1 and ${maxAmount}.`);
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to record a cash reimbursement of ₹${amountToSettle}? This will NOT affect P&L but will decrease your available cash/bank balance.`)) return;
+        setLoading(true);
+        try {
+            const res = await fetch('/api/transactions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'EXPENSE',
+                    category: 'Refund/Reimbursement',
+                    amount: amountToSettle.toString(),
+                    description: `Cash Reimbursement for out-of-pocket expenses to ${spenderName}.`,
+                    date: new Date().toISOString().split('T')[0],
+                    paymentMode: 'CASH', // Default to CASH
+                    spender: spenderName,
+                    isReimbursement: true,
+                    isRefundable: false
+                })
+            });
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => null);
+                throw new Error(`${errorData?.error || res.statusText}`);
+            }
+            await fetchData();
+            alert(`₹${amountToSettle} successfully reimbursed!`);
+        } catch (error: any) {
+            console.error('Error recording reimbursement:', error);
+            alert(`Failed to record reimbursement: ${error.message || 'Unknown error'}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleCreateTransaction = async (e: FormEvent) => {
         e.preventDefault();
 
@@ -294,9 +343,9 @@ export default function AdminPage() {
         }
 
         // Invoice Mandatory Check
-        if (transForm.type === 'EXPENSE') {
-            if (!transForm.invoiceImage) {
-                alert("An Invoice is MANDATORY for all expenses. Please upload an image.");
+        if (transForm.type === 'EXPENSE' && !transForm.isReimbursement) {
+            if (!transForm.invoiceImage && (!transForm.invoiceImages || transForm.invoiceImages.length === 0)) {
+                alert("An Invoice is MANDATORY for all expenses (except cash reimbursements). Please upload at least one image or document.");
                 return;
             }
         }
@@ -352,7 +401,9 @@ export default function AdminPage() {
                 isRefundable: false,
                 residentId: '',
                 spender: '',
-                invoiceImage: undefined
+                invoiceImage: undefined,
+                invoiceImages: [],
+                isReimbursement: false
             });
             setSelectedApplicableMonths([new Date().toISOString().slice(0, 7)]);
             setEditingTransaction(null);
@@ -681,9 +732,9 @@ export default function AdminPage() {
                                                                             {t.type === 'REVENUE'
                                                                                 ? `From: ${resident?.name || 'Unknown'}`
                                                                                 : `By: ${t.spender}${t.isRefundable ? ' (Refundable)' : ''}`}
-                                                                            {t.invoiceImage && (
-                                                                                <button onClick={() => setViewingInvoice(t.invoiceImage || null)} className="flex items-center gap-1 text-gray-600 hover:text-gray-800 mt-1">
-                                                                                    <FileText className="w-3 h-3" /> View Invoice
+                                                                            {(t.invoiceImage || (t.invoiceImages && t.invoiceImages.length > 0)) && (
+                                                                                <button onClick={() => setViewingInvoice(t.invoiceImages && t.invoiceImages.length > 0 ? t.invoiceImages : t.invoiceImage ? [t.invoiceImage] : null)} className="flex items-center gap-1 text-gray-600 hover:text-gray-800 mt-1">
+                                                                                    <FileText className="w-3 h-3" /> View Invoice{t.invoiceImages && t.invoiceImages.length > 1 ? `s (${t.invoiceImages.length})` : ''}
                                                                                 </button>
                                                                             )}
                                                                         </div>
@@ -854,25 +905,48 @@ export default function AdminPage() {
                                         {transForm.type === 'EXPENSE' && (
                                             <div className="border-t border-gray-100 pt-4">
                                                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                                                    <Upload className="w-4 h-4" /> Upload Invoice (Required)
+                                                    <Upload className="w-4 h-4" /> Upload Invoice(s) {transForm.isReimbursement ? '(Optional for cash refunds)' : '(Required)'}
                                                 </label>
                                                 <input
                                                     type="file"
-                                                    accept="image/*"
+                                                    accept="image/*,application/pdf"
+                                                    multiple
                                                     onChange={handleFileChange}
                                                     className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 transaction"
                                                 />
-                                                {transForm.invoiceImage && (
-                                                    <div className="mt-2 relative w-full h-32 rounded-lg overflow-hidden border border-gray-200">
-                                                        <img src={transForm.invoiceImage} alt="Invoice Preview" className="w-full h-full object-cover" />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setTransForm({ ...transForm, invoiceImage: undefined })}
-                                                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600 transition"
-                                                            title="Remove Image"
-                                                        >
-                                                            <X className="w-3 h-3" />
-                                                        </button>
+                                                
+                                                {(transForm.invoiceImage || (transForm.invoiceImages && transForm.invoiceImages.length > 0)) && (
+                                                    <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+                                                        {transForm.invoiceImage && (
+                                                            <div className="relative w-full h-24 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex justify-center items-center">
+                                                                <img src={transForm.invoiceImage} alt="Legacy Preview" className="w-full h-full object-cover" />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setTransForm({ ...transForm, invoiceImage: undefined })}
+                                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600 transition"
+                                                                    title="Remove Image"
+                                                                >
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        {transForm.invoiceImages && transForm.invoiceImages.map((imgStr, idx) => (
+                                                            <div key={idx} className="relative w-full h-24 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex justify-center items-center">
+                                                                {imgStr.startsWith('data:image/') ? (
+                                                                    <img src={imgStr} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <span className="text-xs text-gray-500 font-bold p-2 text-center break-words w-full">PDF/File</span>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setTransForm({ ...transForm, invoiceImages: transForm.invoiceImages.filter((_, i) => i !== idx) })}
+                                                                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600 transition"
+                                                                    title="Remove File"
+                                                                >
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 )}
                                             </div>
@@ -928,9 +1002,14 @@ export default function AdminPage() {
                                                                     <p className="text-xs text-orange-800">Unsettled Refunds (Expenses paid by resident)</p>
                                                                     <span className="font-bold text-orange-600">₹{r.unsettledRefunds.toFixed(2)}</span>
                                                                 </div>
-                                                                <button onClick={() => handleSettleRefunds(r.name, r.unsettledRefunds)} className="w-full text-xs bg-orange-600 hover:bg-orange-700 text-white px-2 py-2 rounded-md font-bold transition flex items-center justify-center gap-1">
-                                                                    <Check className="w-3 h-3" /> Settle against Maintenance Due
-                                                                </button>
+                                                                <div className="flex flex-col gap-2">
+                                                                    <button onClick={() => handleSettleRefunds(r.name, r.unsettledRefunds)} className="w-full text-xs bg-orange-600 hover:bg-orange-700 text-white px-2 py-2 rounded-md font-bold transition flex items-center justify-center gap-1">
+                                                                        <Check className="w-3 h-3" /> Settle against Maintenance Due
+                                                                    </button>
+                                                                    <button onClick={() => handleReimburseCash(r.name, r.unsettledRefunds)} className="w-full text-xs bg-gray-800 hover:bg-gray-900 text-white px-2 py-2 rounded-md font-bold transition flex items-center justify-center gap-1">
+                                                                        <IndianRupee className="w-3 h-3" /> Reimburse in Cash
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         )}
                                                     </div>
@@ -974,7 +1053,7 @@ export default function AdminPage() {
                                 {(() => {
                                     const monthlyTrans = transactions.filter(t => t.date.startsWith(reportMonth));
                                     const totalIncome = monthlyTrans.filter(t => t.type === 'REVENUE').reduce((sum, t) => sum + t.amount, 0);
-                                    const totalExpense = monthlyTrans.filter(t => t.type === 'EXPENSE').reduce((sum, t) => sum + t.amount, 0);
+                                    const totalExpense = monthlyTrans.filter(t => t.type === 'EXPENSE' && !t.isReimbursement).reduce((sum, t) => sum + t.amount, 0);
                                     const netBalance = totalIncome - totalExpense;
 
                                     // Category Breakdown
@@ -1114,8 +1193,11 @@ export default function AdminPage() {
                                                                     <span className="font-medium text-gray-700">{spender}</span>
                                                                     <div className="flex items-center gap-3">
                                                                         <span className="font-bold text-orange-600">₹{amt.toFixed(2)}</span>
-                                                                        <button onClick={() => handleSettleRefunds(spender, amt)} className="text-xs bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded transition font-bold">
-                                                                            Settle Custom Amount
+                                                                        <button onClick={() => handleSettleRefunds(spender, amt)} className="text-xs bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded transition font-bold whitespace-nowrap">
+                                                                            Settle against Due
+                                                                        </button>
+                                                                        <button onClick={() => handleReimburseCash(spender, amt)} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded transition font-bold whitespace-nowrap">
+                                                                            Reimburse Cash
                                                                         </button>
                                                                     </div>
                                                                 </div>
@@ -1157,22 +1239,38 @@ export default function AdminPage() {
             </main >
 
             {/* INVOICE MODAL */}
-            {viewingInvoice && (
+            {viewingInvoice && viewingInvoice.length > 0 && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setViewingInvoice(null)}>
                     <div className="relative max-w-4xl w-full max-h-[90vh] bg-white rounded-xl shadow-2xl p-4 flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold">Invoice Preview</h3>
+                            <h3 className="text-lg font-bold">Invoice Preview {viewingInvoice.length > 1 ? `(${viewingInvoice.length})` : ''}</h3>
                             <button onClick={() => setViewingInvoice(null)} className="p-2 hover:bg-gray-100 rounded-full transition">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-auto rounded border border-gray-200">
-                            <img src={viewingInvoice} alt="Invoice" className="w-full h-auto object-contain" />
-                        </div>
-                        <div className="mt-4 flex justify-end">
-                            <a href={viewingInvoice} download="invoice.png" className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 font-bold transition">
-                                Download
-                            </a>
+                        <div className="flex-1 overflow-auto rounded border border-gray-200 p-4 bg-gray-50 flex flex-col gap-8">
+                            {viewingInvoice.map((inv, i) => (
+                                <div key={i} className="flex flex-col items-center">
+                                    {viewingInvoice.length > 1 && <h4 className="font-bold text-gray-500 mb-2">Attachment {i + 1}</h4>}
+                                    {inv.startsWith('data:image/') ? (
+                                        <img src={inv} alt={`Invoice ${i + 1}`} className="w-full h-auto object-contain max-h-[60vh]" />
+                                    ) : (
+                                        <div className="p-10 bg-white border border-gray-200 rounded-xl flex flex-col items-center">
+                                            <FileText className="w-16 h-16 text-gray-400 mb-4" />
+                                            <a href={inv} download={`document_${i + 1}`} className="px-4 py-2 bg-pink-100 text-pink-700 font-bold rounded-lg hover:bg-pink-200 transition">
+                                                Download Document
+                                            </a>
+                                        </div>
+                                    )}
+                                    {inv.startsWith('data:image/') && (
+                                        <div className="mt-4">
+                                            <a href={inv} download={`invoice_${i + 1}.jpg`} className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 font-bold transition">
+                                                Download Image
+                                            </a>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
