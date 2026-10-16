@@ -2,8 +2,8 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
-import { Trash2, Plus, ArrowUpRight, ArrowDownRight, Search, Users, CreditCard, ChevronDown, Check, X, FileText, Upload, Calendar, IndianRupee, Tag, BookOpen, MessageCircle, Bell, Pencil, ArrowLeft, LayoutDashboard, PieChart, Lock } from 'lucide-react';
-import { Resident, Transaction } from '@/types';
+import { Trash2, Plus, ArrowUpRight, ArrowDownRight, Search, Users, CreditCard, ChevronDown, Check, X, FileText, Upload, Calendar, IndianRupee, Tag, BookOpen, MessageCircle, Bell, Pencil, ArrowLeft, LayoutDashboard, PieChart, Lock, PhoneCall, ChevronRight } from 'lucide-react';
+import { Resident, Transaction, EmergencyContact } from '@/types';
 
 export default function AdminPage() {
     // Admin Login State
@@ -27,7 +27,11 @@ export default function AdminPage() {
     const [filterType, setFilterType] = useState<'ALL' | 'REVENUE' | 'EXPENSE'>('ALL');
 
     // Form states
-    const [resForm, setResForm] = useState({ name: '', flatNumber: '', contact: '', role: 'Owner' });
+    const [resForm, setResForm] = useState<{ name: string; flatNumber: string; contact: string; role: string; emergencyContacts: EmergencyContact[] }>({ name: '', flatNumber: '', contact: '', role: 'Owner', emergencyContacts: [] });
+    const [ecForm, setEcForm] = useState<EmergencyContact>({ name: '', contact: '', city: '', relationship: '' });
+    const [editingEcIndex, setEditingEcIndex] = useState<number | null>(null);
+    const [expandedResidentId, setExpandedResidentId] = useState<string | null>(null);
+    const [showEcForm, setShowEcForm] = useState(false);
     const [transForm, setTransForm] = useState<{
         type: 'REVENUE' | 'EXPENSE';
         category: string;
@@ -95,13 +99,20 @@ export default function AdminPage() {
             name: resident.name,
             flatNumber: resident.flatNumber,
             contact: resident.contact,
-            role: resident.role || 'Owner'
+            role: resident.role || 'Owner',
+            emergencyContacts: resident.emergencyContacts || []
         });
+        setShowEcForm(false);
+        setEditingEcIndex(null);
+        setEcForm({ name: '', contact: '', city: '', relationship: '' });
     };
 
     const cancelEditResident = () => {
         setEditingResident(null);
-        setResForm({ name: '', flatNumber: '', contact: '', role: 'Owner' });
+        setResForm({ name: '', flatNumber: '', contact: '', role: 'Owner', emergencyContacts: [] });
+        setShowEcForm(false);
+        setEditingEcIndex(null);
+        setEcForm({ name: '', contact: '', city: '', relationship: '' });
     };
 
     const handleCreateResident = async (e: FormEvent) => {
@@ -122,8 +133,11 @@ export default function AdminPage() {
                 body: JSON.stringify(body),
             });
             if (res.ok) {
-                setResForm({ name: '', flatNumber: '', contact: '', role: 'Owner' });
+                setResForm({ name: '', flatNumber: '', contact: '', role: 'Owner', emergencyContacts: [] });
                 setEditingResident(null);
+                setShowEcForm(false);
+                setEditingEcIndex(null);
+                setEcForm({ name: '', contact: '', city: '', relationship: '' });
                 fetchData();
             }
         } catch (error) {
@@ -560,45 +574,170 @@ export default function AdminPage() {
                                 <div className="lg:col-span-2">
                                     <h2 className="text-xl font-bold mb-4 text-gray-800">Resident List</h2>
                                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                                        <table className="w-full text-left">
-                                            <thead className="bg-gray-50 border-b border-gray-200 text-gray-500">
-                                                <tr>
-                                                    <th className="p-4">Flat No</th>
-                                                    <th className="p-4">Name</th>
-                                                    <th className="p-4">Contact</th>
-                                                    <th className="p-4 text-right">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {residents.map(r => (
-                                                    <tr key={r.id} className="hover:bg-gray-50 transition">
-                                                        <td className="p-4 font-medium text-gray-900">{r.flatNumber}</td>
-                                                        <td className="p-4">
-                                                            <div className="flex items-center text-gray-700 gap-2">
-                                                                {r.name}
-                                                                {r.role && r.role !== 'Owner' && (
-                                                                    <span className={`text-xs px-2 py-0.5 rounded-full ${r.role === 'President' || r.role === 'Secretary' || r.role === 'Admin' ? 'bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                                        {r.role}
-                                                                    </span>
-                                                                )}
+                                        {residents.length === 0 ? (
+                                            <p className="p-8 text-center text-gray-400">No residents added yet.</p>
+                                        ) : (
+                                            <div className="divide-y divide-gray-100">
+                                                {residents.map(r => {
+                                                    const isExpanded = expandedResidentId === r.id;
+                                                    return (
+                                                        <div key={r.id}>
+                                                            {/* Row */}
+                                                            <div className="flex items-center p-4 hover:bg-gray-50 transition gap-3 cursor-pointer" onClick={() => setExpandedResidentId(isExpanded ? null : r.id)}>
+                                                                <ChevronRight className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-600 flex-shrink-0">{r.flatNumber}</div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <span className="font-semibold text-gray-800">{r.name}</span>
+                                                                        {r.role && r.role !== 'Owner' && (
+                                                                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{r.role}</span>
+                                                                        )}
+                                                                        {(r.emergencyContacts && r.emergencyContacts.length > 0) && (
+                                                                            <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 flex items-center gap-1">
+                                                                                <PhoneCall className="w-3 h-3" /> {r.emergencyContacts.length} emergency
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <p className="text-sm text-gray-500 font-mono">{r.contact}</p>
+                                                                </div>
+                                                                <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                                                    <button onClick={() => startEditResident(r)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
+                                                                        <Pencil className="w-4 h-4" />
+                                                                    </button>
+                                                                    <button onClick={() => handleDeleteResident(r.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete">
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
                                                             </div>
-                                                        </td>
-                                                        <td className="p-4 text-gray-500 font-mono text-sm">{r.contact}</td>
-                                                        <td className="p-4 text-right">
-                                                            <div className="flex items-center justify-end gap-2">
-                                                                <button onClick={() => startEditResident(r)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
-                                                                    <Pencil className="w-4 h-4" />
-                                                                </button>
-                                                                <button onClick={() => handleDeleteResident(r.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete">
-                                                                    <Trash2 className="w-4 h-4" />
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                        {residents.length === 0 && <p className="p-8 text-center text-gray-400">No residents added yet.</p>}
+
+                                                            {/* Expanded Emergency Contacts Panel */}
+                                                            {isExpanded && (
+                                                                <div className="bg-orange-50 border-t border-orange-100 px-6 py-5">
+                                                                    <div className="flex items-center justify-between mb-3">
+                                                                        <h4 className="font-bold text-sm text-orange-800 flex items-center gap-2"><PhoneCall className="w-4 h-4" /> Emergency Contacts</h4>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setShowEcForm(true);
+                                                                                setEditingEcIndex(null);
+                                                                                setEcForm({ name: '', contact: '', city: '', relationship: '' });
+                                                                                // Pre-select this resident for editing
+                                                                                if (!editingResident || editingResident.id !== r.id) startEditResident(r);
+                                                                            }}
+                                                                            className="text-xs flex items-center gap-1 bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg font-bold transition"
+                                                                        >
+                                                                            <Plus className="w-3 h-3" /> Add Contact
+                                                                        </button>
+                                                                    </div>
+
+                                                                    {(!r.emergencyContacts || r.emergencyContacts.length === 0) && !showEcForm && (
+                                                                        <p className="text-sm text-orange-600 italic">No emergency contacts added yet.</p>
+                                                                    )}
+
+                                                                    {r.emergencyContacts && r.emergencyContacts.length > 0 && (
+                                                                        <div className="space-y-2 mb-4">
+                                                                            {r.emergencyContacts.map((ec, idx) => (
+                                                                                <div key={idx} className="bg-white rounded-lg p-3 border border-orange-100 flex items-start justify-between gap-2">
+                                                                                    <div className="flex-1 min-w-0">
+                                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                                            <span className="font-semibold text-gray-800 text-sm">{ec.name}</span>
+                                                                                            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{ec.relationship}</span>
+                                                                                        </div>
+                                                                                        <p className="text-sm text-gray-600 font-mono mt-0.5">{ec.contact}</p>
+                                                                                        {ec.city && <p className="text-xs text-gray-400 mt-0.5">📍 {ec.city}</p>}
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                                                        <a href={`tel:${ec.contact}`} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition" title="Call">
+                                                                                            <PhoneCall className="w-3.5 h-3.5" />
+                                                                                        </a>
+                                                                                        <button onClick={() => {
+                                                                                            if (!editingResident || editingResident.id !== r.id) startEditResident(r);
+                                                                                            setEditingEcIndex(idx);
+                                                                                            setEcForm({ ...ec });
+                                                                                            setShowEcForm(true);
+                                                                                        }} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
+                                                                                            <Pencil className="w-3.5 h-3.5" />
+                                                                                        </button>
+                                                                                        <button onClick={async () => {
+                                                                                            if (!confirm('Remove this emergency contact?')) return;
+                                                                                            const updated = [...(r.emergencyContacts || [])].filter((_, i) => i !== idx);
+                                                                                            await fetch('/api/residents', {
+                                                                                                method: 'PUT',
+                                                                                                headers: { 'Content-Type': 'application/json' },
+                                                                                                body: JSON.stringify({ id: r.id, name: r.name, flatNumber: r.flatNumber, contact: r.contact, role: r.role, emergencyContacts: updated })
+                                                                                            });
+                                                                                            fetchData();
+                                                                                        }} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Remove">
+                                                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Inline add/edit emergency contact form */}
+                                                                    {showEcForm && (editingResident?.id === r.id || (!editingResident && expandedResidentId === r.id)) && (
+                                                                        <div className="bg-white rounded-xl border border-orange-200 p-4 mt-3 space-y-3">
+                                                                            <h5 className="font-bold text-sm text-gray-700">{editingEcIndex !== null ? 'Edit' : 'Add'} Emergency Contact</h5>
+                                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                                <div>
+                                                                                    <label className="block text-xs font-medium text-gray-600 mb-1">Full Name *</label>
+                                                                                    <input type="text" required value={ecForm.name} onChange={e => setEcForm({ ...ecForm, name: e.target.value })} className="w-full p-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-300 bg-white text-gray-900" placeholder="e.g. Ramesh Kumar" />
+                                                                                </div>
+                                                                                <div>
+                                                                                    <label className="block text-xs font-medium text-gray-600 mb-1">Contact Number *</label>
+                                                                                    <input type="text" required maxLength={15} value={ecForm.contact} onChange={e => setEcForm({ ...ecForm, contact: e.target.value })} className="w-full p-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-300 bg-white text-gray-900" placeholder="9876543210" />
+                                                                                </div>
+                                                                                <div>
+                                                                                    <label className="block text-xs font-medium text-gray-600 mb-1">Relationship *</label>
+                                                                                    <input type="text" required value={ecForm.relationship} onChange={e => setEcForm({ ...ecForm, relationship: e.target.value })} className="w-full p-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-300 bg-white text-gray-900" placeholder="e.g. Brother, Parent" />
+                                                                                </div>
+                                                                                <div>
+                                                                                    <label className="block text-xs font-medium text-gray-600 mb-1">City</label>
+                                                                                    <input type="text" value={ecForm.city} onChange={e => setEcForm({ ...ecForm, city: e.target.value })} className="w-full p-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-300 bg-white text-gray-900" placeholder="e.g. Chennai" />
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="flex gap-2 pt-1">
+                                                                                <button
+                                                                                    onClick={async () => {
+                                                                                        if (!ecForm.name || !ecForm.contact || !ecForm.relationship) {
+                                                                                            alert('Name, contact and relationship are required.');
+                                                                                            return;
+                                                                                        }
+                                                                                        const existing = r.emergencyContacts || [];
+                                                                                        const updated = editingEcIndex !== null
+                                                                                            ? existing.map((ec, i) => i === editingEcIndex ? { ...ecForm } : ec)
+                                                                                            : [...existing, { ...ecForm }];
+                                                                                        await fetch('/api/residents', {
+                                                                                            method: 'PUT',
+                                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                                            body: JSON.stringify({ id: r.id, name: r.name, flatNumber: r.flatNumber, contact: r.contact, role: r.role, emergencyContacts: updated })
+                                                                                        });
+                                                                                        setShowEcForm(false);
+                                                                                        setEditingEcIndex(null);
+                                                                                        setEcForm({ name: '', contact: '', city: '', relationship: '' });
+                                                                                        fetchData();
+                                                                                    }}
+                                                                                    className="flex-1 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-sm font-bold rounded-lg transition"
+                                                                                >
+                                                                                    {editingEcIndex !== null ? 'Update Contact' : 'Save Contact'}
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => { setShowEcForm(false); setEditingEcIndex(null); setEcForm({ name: '', contact: '', city: '', relationship: '' }); }}
+                                                                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm rounded-lg transition"
+                                                                                >
+                                                                                    Cancel
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

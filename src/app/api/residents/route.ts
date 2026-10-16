@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { name, flatNumber, contact, role } = body;
+        const { name, flatNumber, contact, role, emergencyContacts } = body;
 
         if (!name || !flatNumber) {
             return NextResponse.json(
@@ -30,6 +30,7 @@ export async function POST(req: Request) {
             flatNumber,
             contact: contact || '',
             role: role || 'Owner',
+            emergencyContacts: emergencyContacts || [],
         };
 
         data.residents.push(newResident);
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
     try {
         const body = await req.json();
-        const { id, name, flatNumber, contact, role } = body;
+        const { id, name, flatNumber, contact, role, emergencyContacts } = body;
 
         if (!id || !name || !flatNumber) {
             return NextResponse.json(
@@ -71,7 +72,8 @@ export async function PUT(req: Request) {
             name,
             flatNumber,
             contact: contact || '',
-            role: role || data.residents[residentIndex].role || 'Owner'
+            role: role || data.residents[residentIndex].role || 'Owner',
+            emergencyContacts: emergencyContacts !== undefined ? emergencyContacts : (data.residents[residentIndex].emergencyContacts || []),
         };
 
         await saveAppData(data);

@@ -1,9 +1,17 @@
+export interface EmergencyContact {
+  name: string;
+  contact: string;
+  city: string;
+  relationship: string;
+}
+
 export interface Resident {
   id: string;
   name: string;
   flatNumber: string;
   contact: string;
   role?: 'President' | 'Secretary' | 'Owner' | 'Tenant' | 'Admin';
+  emergencyContacts?: EmergencyContact[];
 }
 
 export interface Transaction {
